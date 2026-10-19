@@ -1,0 +1,12 @@
+# Copy to .dev.vars (gitignored) for local `npm run dev`.
+#
+# AGENT_TOKEN: same value as the deployed worker secret
+#   echo "<token>" | npx wrangler secret put AGENT_TOKEN
+# Leave unset to disable auth entirely (dev only).
+AGENT_TOKEN=
+
+# Model provider keys (pi-ai reads process.env; also set as worker secrets):
+# DEEPSEEK_API_KEY=...     # default model deepseek/deepseek-flash
+# GROQ_API_KEY=...
+# OPENROUTER_API_KEY=...
+# GEMINI_API_KEY=...
