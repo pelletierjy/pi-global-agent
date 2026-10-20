@@ -76,7 +76,7 @@ type TaskRow = {
 
 type NoteRow = { id: number; body: string; created_at: number };
 
-type AgentState = { status: string; currentTask: string };
+type AgentState = { status: string; currentTask: string; currentTaskId?: number };
 
 const TASK_STATUSES: TaskStatus[] = ["pending", "in_progress", "done", "failed"];
 
@@ -456,17 +456,15 @@ export class PiAgent {
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  private wsId(ws: WebSocket): string {
-    return (ws as WebSocket & { id: string }).id;
-  }
 
   private async attach(ws: WebSocket, convParam: string): Promise<void> {
     if (this.subs.get(ws)?.stream) return;
     this.subs.set(ws, { convId: convParam }); // sync marker: prevents double-attach
     try {
-      await this.ctx.storage.put(`ws:${this.wsId(ws)}`, convParam);
+      // Per-socket identity that survives hibernation (DO WebSockets have no .id).
+      ws.serializeAttachment(convParam);
     } catch {
-      /* kv best effort */
+      /* best effort */
     }
     try {
       const harness = await this.getHarness();
@@ -504,7 +502,8 @@ export class PiAgent {
     for (const ws of this.ctx.getWebSockets()) {
       if (this.subs.has(ws)) continue;
       try {
-        const stored = (await this.ctx.storage.get<string>(`ws:${this.wsId(ws)}`)) ?? "root";
+        const attachment = ws.deserializeAttachment();
+        const stored = typeof attachment === "string" && attachment ? attachment : "root";
         await this.attach(ws, stored);
       } catch (e) {
         console.error("[pi-durable] reattach failed:", e);
@@ -516,7 +515,8 @@ export class PiAgent {
     try {
       void message;
       if (!this.subs.get(ws)?.stream) {
-        const stored = (await this.ctx.storage.get<string>(`ws:${this.wsId(ws)}`)) ?? "root";
+        const attachment = ws.deserializeAttachment();
+        const stored = typeof attachment === "string" && attachment ? attachment : "root";
         await this.attach(ws, stored);
       }
       try {
@@ -532,11 +532,6 @@ export class PiAgent {
   async webSocketClose(ws: WebSocket, _code: number, _reason: string, _wasClean: boolean): Promise<void> {
     const sub = this.subs.get(ws);
     this.subs.delete(ws);
-    try {
-      await this.ctx.storage.delete(`ws:${this.wsId(ws)}`);
-    } catch {
-      /* kv best effort */
-    }
     if (sub?.stream) {
       try {
         await sub.stream.stop();
@@ -667,7 +662,7 @@ export class PiAgent {
             Date.now(),
           );
           if (!row) return json({ error: "no_pending_tasks" }, 404);
-          await this.setState({ status: "working", currentTask: row.title });
+          await this.setState({ status: "working", currentTask: row.title, currentTaskId: row.id });
           this.broadcastChanged("tasks");
           return json(row);
         }
@@ -700,7 +695,11 @@ export class PiAgent {
             const row = await db.get<TaskRow>(`UPDATE tasks SET ${set.join(", ")} WHERE id = ? RETURNING *`, ...params);
             if (!row) return json({ error: "task_not_found" }, 404);
             const state = await this.getState();
-            if ((row.status === "done" || row.status === "failed") && state.currentTask === row.title) {
+            const isCurrent =
+              state.currentTaskId !== undefined
+                ? state.currentTaskId === row.id
+                : state.currentTask === row.title; // legacy state persisted before currentTaskId existed
+            if ((row.status === "done" || row.status === "failed") && isCurrent) {
               await this.setState({ status: "idle", currentTask: "" });
             }
             this.broadcastChanged("tasks");
