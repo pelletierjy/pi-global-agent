@@ -19,11 +19,15 @@
   // When active, re-add and redeploy:
   // "routes": [{ "pattern": "pi-global-agent.jyp.solutions", "custom_domain": true }],
 
+  // Scenario C: weekly sweep (Mondays 13:00 UTC = 09:00 EDT): digests every peer's
+  // queue into a hub note and dispatches SWEEP_TASK (deduped) on each peer.
+  "triggers": { "crons": ["0 13 * * 1"] },
+
   "vars": {
     "AGENT_NAME": "global",
     // Hub only: the four project workers. Switch URLs to *.jyp.solutions once
     // the zone is active.
-    "PEERS": "[{\"name\":\"conversia-core\",\"url\":\"https://pi-conversia-core.need-homework.workers.dev\"},{\"name\":\"homeworktutora\",\"url\":\"https://pi-homeworktutora.need-homework.workers.dev\"},{\"name\":\"scalesviewer\",\"url\":\"https://pi-scalesviewer.need-homework.workers.dev\"},{\"name\":\"globalvsthost\",\"url\":\"https://pi-globalvsthost.need-homework.workers.dev\"}]"
+    "SWEEP_TASK": "Weekly audit: verify the project builds and tests pass (use run_command where useful), then add a note with any failures", "PEERS": "[{\"name\":\"conversia-core\",\"url\":\"https://pi-conversia-core.need-homework.workers.dev\"},{\"name\":\"homeworktutora\",\"url\":\"https://pi-homeworktutora.need-homework.workers.dev\"},{\"name\":\"scalesviewer\",\"url\":\"https://pi-scalesviewer.need-homework.workers.dev\"},{\"name\":\"globalvsthost\",\"url\":\"https://pi-globalvsthost.need-homework.workers.dev\"}]"
   },
 
   "observability": {

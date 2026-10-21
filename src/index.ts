@@ -49,6 +49,8 @@ import {
   openDurableObjectSqliteStorage,
 } from "@earendil-works/pi-durable/storage/sqlite/cloudflare";
 
+import { DASHBOARD_HTML } from "./dashboard";
+
 /* ------------------------------------------------------------------ types */
 
 export type Env = {
@@ -90,6 +92,16 @@ const CORS: Record<string, string> = {
 };
 
 const HOST_TABLES = [
+  `CREATE TABLE IF NOT EXISTS exec_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    output TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
@@ -205,6 +217,13 @@ export default {
     if (url.pathname === "/health") {
       return json({ ok: true, agent: env.AGENT_NAME, runtime: "pi-durable" });
     }
+    if (url.pathname === "/dashboard") {
+      const authError = requireAuth(request, env);
+      if (authError) return authError;
+      return new Response(DASHBOARD_HTML, {
+        headers: { "content-type": "text/html; charset=utf-8", ...CORS },
+      });
+    }
     if (url.pathname === "/") {
       return json({
         agent: env.AGENT_NAME,
@@ -233,6 +252,13 @@ export default {
 
     const stub = env.PiAgent.get(env.PiAgent.idFromName(DEFAULT_INSTANCE));
     return stub.fetch(request);
+  },
+
+  // Cron trigger (hub only — see triggers.crons in wrangler.jsonc). The sweep
+  // digests every peer's queue into a hub note and dispatches the standing
+  // audit task when SWEEP_TASK is configured. Same function as POST /federation/sweep.
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(runSweep(env));
   },
 } satisfies ExportedHandler<Env>;
 
@@ -282,6 +308,9 @@ async function federation(request: Request, env: Env): Promise<Response> {
   const peers = parsePeers(env);
   const headers = peerHeaders(env);
 
+  if (request.method === "GET" && sub === "/tasks") return federationTasks(env);
+  if (request.method === "POST" && sub === "/sweep") return runSweep(env);
+
   if (request.method === "GET" && (sub === "/" || sub === "/status")) {
     const self = await selfStatus(env);
     const results = await Promise.all(
@@ -320,6 +349,93 @@ async function federation(request: Request, env: Env): Promise<Response> {
   }
 
   return json({ error: "not_found", peers: peers.map((p) => p.name) }, 404);
+}
+
+/** GET /federation/tasks — pull every peer's recent tasks (how the hub "reads results"). */
+async function federationTasks(env: Env): Promise<Response> {
+  const peers = parsePeers(env);
+  const headers = peerHeaders(env);
+  const results = await Promise.all(
+    peers.map(async (peer) => {
+      try {
+        const res = await fetch(`${peer.url}/tasks?limit=10`, { headers });
+        return { name: peer.name, ok: res.ok, tasks: res.ok ? await res.json() : [] };
+      } catch (e) {
+        return { name: peer.name, ok: false, error: String(e), tasks: [] };
+      }
+    }),
+  );
+  return json({ generatedAt: Date.now(), peers: results });
+}
+
+/**
+ * Scenario C: the weekly sweep. Digest every peer's queue into a hub note and,
+ * when SWEEP_TASK is set, dispatch that audit task to each peer that does not
+ * already have it pending (dedupe so reruns/cron overlaps are idempotent).
+ * Called by the cron trigger and by POST /federation/sweep for manual runs.
+ */
+async function runSweep(env: Env): Promise<Response> {
+  const peers = parsePeers(env);
+  const headers = peerHeaders(env);
+  const sweepTask = (env as unknown as { SWEEP_TASK?: string }).SWEEP_TASK?.trim();
+  const parts: string[] = [];
+  const dispatched: Record<string, unknown>[] = [];
+
+  for (const peer of peers) {
+    try {
+      const statusRes = await fetch(`${peer.url}/status`, { headers });
+      const status = (statusRes.ok ? await statusRes.json() : null) as {
+        counts?: Record<string, unknown>;
+        notes?: number;
+      } | null;
+      const counts = status?.counts ?? {};
+      parts.push(
+        `${peer.name}: pending=${counts.pending ?? '?'} in_progress=${counts.in_progress ?? '?'} done=${counts.done ?? '?'} notes=${status?.notes ?? '?'}`,
+      );
+
+      if (sweepTask) {
+        // Dedupe: skip when a pending task with the same title already exists.
+        const pendingRes = await fetch(`${peer.url}/tasks?status=pending&limit=50`, { headers });
+        const pending = pendingRes.ok ? await pendingRes.json() : [];
+        const duplicate = Array.isArray(pending) && pending.some((t: { title?: string }) => t.title === sweepTask);
+        if (duplicate) {
+          dispatched.push({ peer: peer.name, skipped: "already pending" });
+        } else {
+          const post = await fetch(`${peer.url}/tasks`, {
+            method: "POST",
+            headers: { ...headers, "content-type": "application/json" },
+            body: JSON.stringify({ title: sweepTask, body: "auto: scheduled sweep (pi-global-agent)" }),
+          });
+          dispatched.push({ peer: peer.name, ok: post.ok });
+        }
+      }
+    } catch (e) {
+      parts.push(`${peer.name}: ERROR ${String(e)}`);
+    }
+  }
+
+  const self = await selfStatus(env);
+  const selfCounts: Record<string, unknown> =
+    (self as { counts?: Record<string, unknown> })?.counts ?? {};
+  const digest =
+    `Sweep ${new Date().toISOString()} | self: pending=${selfCounts.pending ?? '?'} done=${selfCounts.done ?? '?'} | ` +
+    parts.join(" | ") +
+    (sweepTask ? ` | dispatched: ${JSON.stringify(dispatched)}` : "");
+
+  // Store the digest as a hub note (internal DO call — auth already handled at the worker edge).
+  try {
+    const stub = env.PiAgent.get(env.PiAgent.idFromName(DEFAULT_INSTANCE));
+    await stub.fetch(
+      new Request("https://pi-agent/notes", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ body: digest }),
+      }),
+    );
+  } catch (e) {
+    return json({ error: "digest_store_failed", message: String(e), digest }, 500);
+  }
+  return json({ ok: true, digest, dispatched });
 }
 
 /* --------------------------------------------------------------- the DO -- */
@@ -402,6 +518,7 @@ export class PiAgent {
   private buildRegistry() {
     const registry = createRegistry();
     registry.install(this.missionControlExtension());
+    registry.install(this.remoteExecExtension());
     return registry;
   }
 
@@ -543,6 +660,95 @@ export class PiAgent {
 
   async webSocketError(ws: WebSocket, _error: unknown): Promise<void> {
     await this.webSocketClose(ws, 1011, "error", false);
+  }
+
+  /* ------------------------------------------------ remote exec (scenario E) */
+
+  /** Wait for the local runner to finish an exec request (polls the host table). */
+  private async waitForExec(
+    id: number,
+    timeoutMs: number,
+  ): Promise<{ status: string; output: string | null }> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const row = await this.database.get<{ status: string; output: string | null }>(
+        `SELECT status, output FROM exec_requests WHERE id = ?`,
+        id,
+      );
+      if (!row) throw new Error("exec request vanished from the queue");
+      if (row.status === "done" || row.status === "failed") return row;
+      if (Date.now() > deadline) {
+        throw new Error(
+          `remote executor timed out after ${Math.round(timeoutMs / 1000)}s — is runner.mjs running on the project machine?`,
+        );
+      }
+      await new Promise((r) => setTimeout(r, 400));
+    }
+  }
+
+  private remoteExecExtension() {
+    const db = this.database;
+    const project = this.env.AGENT_NAME;
+    const enqueue = async (kind: string, payload: Record<string, unknown>): Promise<number> => {
+      const now = Date.now();
+      const row = await db.get<{ id: number }>(
+        `INSERT INTO exec_requests (project, kind, payload, created_at, updated_at) VALUES (?, ?, ?, ?, ?) RETURNING *`,
+        project,
+        kind,
+        JSON.stringify(payload),
+        now,
+        now,
+      );
+      if (!row) throw new Error("failed to enqueue exec request");
+      this.broadcastChanged("tasks");
+      return row.id;
+    };
+
+    return defineExtension({
+      name: "remote-exec",
+      tools: [
+        defineTool({
+          name: "run_command",
+          description:
+            `Run a shell command on the ${project} project machine through the local runner ` +
+            "(runner.mjs). Returns stdout/stderr with the exit code. Honors timeoutSeconds (default 120, max 300).",
+          parameters: Type.Object({
+            command: Type.String(),
+            timeoutSeconds: Type.Optional(Type.Number()),
+          }),
+          execute: async (args: { command: string; timeoutSeconds?: number }) => {
+            const id = await enqueue("command", { command: args.command });
+            const timeout = Math.min(Math.max(args.timeoutSeconds ?? 120, 5), 300) * 1000;
+            const row = await this.waitForExec(id, timeout);
+            if (row.status === "failed") throw new Error(row.output ?? "command failed");
+            return { output: [{ type: "text" as const, text: (row.output ?? "(no output)").slice(0, 40000) }] };
+          },
+        }),
+        defineTool({
+          name: "read_file",
+          description: `Read a UTF-8 file inside the ${project} project (path relative to the project root).`,
+          parameters: Type.Object({ path: Type.String() }),
+          replay: "safe",
+          execute: async (args: { path: string }) => {
+            const id = await enqueue("read", { path: args.path });
+            const row = await this.waitForExec(id, 60000);
+            if (row.status === "failed") throw new Error(row.output ?? "read failed");
+            return { output: [{ type: "text" as const, text: (row.output ?? "").slice(0, 80000) }] };
+          },
+        }),
+        defineTool({
+          name: "write_file",
+          description: `Write a UTF-8 file inside the ${project} project (creates parent directories). Path is relative to the project root.`,
+          parameters: Type.Object({ path: Type.String(), content: Type.String() }),
+          execute: async (args: { path: string; content: string }) => {
+            const id = await enqueue("write", { path: args.path, content: args.content });
+            const row = await this.waitForExec(id, 60000);
+            if (row.status === "failed") throw new Error(row.output ?? "write failed");
+            return { output: [{ type: "text" as const, text: row.output ?? "written" }] };
+          },
+        }),
+      ],
+    });
   }
 
   /* ------------------------------------------------------- mission control */
@@ -735,6 +941,38 @@ export class PiAgent {
         const next = await this.setState({ status, currentTask });
         this.broadcastChanged("state");
         return json(next);
+      }
+
+      /* ---------------- remote execution bridge (scenario E) ---------------- */
+      if (seg[0] === "exec") {
+        if (seg.length === 2 && seg[1] === "pending" && method === "GET") {
+          const rows = await db.all(`SELECT * FROM exec_requests WHERE status = 'pending' ORDER BY id ASC LIMIT 10`);
+          return json(rows);
+        }
+        if (seg.length === 2 && seg[1] === "claim" && method === "POST") {
+          // Atomic claim: one statement, no read-modify-write window.
+          const row = await db.get(
+            `UPDATE exec_requests SET status = 'running', updated_at = ?
+             WHERE id = (SELECT id FROM exec_requests WHERE status = 'pending' ORDER BY id ASC LIMIT 1)
+             RETURNING *`,
+            Date.now(),
+          );
+          return row ? json(row) : json({ error: "no_pending_exec" }, 404);
+        }
+        if (seg.length === 3 && seg[2] === "result" && method === "POST") {
+          const status = body.status === "failed" ? "failed" : "done";
+          const output = typeof body.output === "string" ? body.output.slice(0, 400000) : null;
+          const row = await db.get(
+            `UPDATE exec_requests SET status = ?, output = ?, updated_at = ? WHERE id = ? RETURNING *`,
+            status,
+            output,
+            Date.now(),
+            Number(seg[1]),
+          );
+          if (!row) return json({ error: "exec_not_found" }, 400);
+          this.broadcastChanged("tasks");
+          return json(row);
+        }
       }
 
       /* ---------------- conversations ---------------- */
