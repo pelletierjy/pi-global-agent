@@ -170,7 +170,7 @@
       <span style="color:var(--yellow)">persistent agent, reachable anywhere, that loses nothing</span>
     </div>
   </div>
-  <div class="foot">2 / 10</div>
+  <div class="foot">2 / 11</div>
 </section>
 
 <!-- ============ 3 · TOPOLOGY ============ -->
@@ -234,7 +234,7 @@
     <span class="tag g">one shared AGENT_TOKEN</span>
     <span class="tag y">jyp.solutions: config ready, domain not taken</span>
   </div>
-  <div class="foot">3 / 10</div>
+  <div class="foot">3 / 11</div>
 </section>
 
 <!-- ============ 4 · INSIDE THE DO ============ -->
@@ -271,7 +271,7 @@
       </div>
     </div>
   </div>
-  <div class="foot">4 / 10</div>
+  <div class="foot">4 / 11</div>
 </section>
 
 <!-- ============ 5 · LIFECYCLE ============ -->
@@ -329,7 +329,7 @@
     <div class="card" style="text-align:center"><div class="num">0</div><div class="cap">lost on crash</div></div>
     <div class="card" style="text-align:center"><div class="num">30 Hz</div><div class="cap">WS stream (partials)</div></div>
   </div>
-  <div class="foot">5 / 10</div>
+  <div class="foot">5 / 11</div>
 </section>
 
 <!-- ============ 6 · API ============ -->
@@ -354,7 +354,7 @@
       <tr><td><span class="m get">GET</span></td><td>/dashboard</td><td>This fleet, in your browser</td></tr>
     </table>
   </div>
-  <div class="foot">6 / 10</div>
+  <div class="foot">6 / 11</div>
 </section>
 
 <!-- ============ 7 · SCENARIOS ============ -->
@@ -388,7 +388,7 @@
       <p><code>node scripts/morning.mjs</code>: fleet states + open tasks → the hub writes a prioritized brief and saves it with <code>add_note</code>. Built-in retries.</p>
     </div>
   </div>
-  <div class="foot">7 / 10</div>
+  <div class="foot">7 / 11</div>
 </section>
 
 <!-- ============ 8 · EXAMPLE ============ -->
@@ -458,12 +458,57 @@ Invoke-RestMethod -Headers $H -Method Post `
 <span class="ok">#  → result flows back → the model answers with the real output</span></pre>
     </div>
   </div>
-  <div class="foot">8 / 10</div>
+  <div class="foot">8 / 11</div>
 </section>
 
+<!-- ============ 9 · THE SKILL ============ -->
+<section class="slide">
+  <div class="kicker">08 · New</div>
+  <h2>The pi skill: <span style="color:var(--cyan)">pi-durable-fleet</span></h2>
+  <p class="sub">This whole deck, packaged as a skill — every pi session loads it automatically when the task mentions agents, queues, memory or federation.</p>
+  <div class="inner grid" style="grid-template-columns:1fr 1fr;gap:14px">
+    <div class="card">
+      <div class="cap" style="margin-bottom:8px">Where it lives & how it loads</div>
+      <pre style="font-size:11.5px">~/.agents/skills/pi-durable-fleet/SKILL.md
+
+<span class="cm"># at startup, pi only advertises:</span>
+<span class="hi">name</span>: pi-durable-fleet
+<span class="hi">description</span>: Operate the PI Durable fleet of 5 …
+<span class="cm">#  ^ the router: "queue / notes / agents / sweep"</span>
+
+<span class="cm"># when the task matches, pi reads SKILL.md</span>
+<span class="cm"># and follows its instructions (recipes, discipline, gotchas)</span>
+
+/skill:pi-durable-fleet sweep now   <span class="cm"># force-load + attach a request</span>
+/reload                             <span class="cm"># re-scan after editing the skill</span>
+
+<span class="cm"># scope: ALL your projects (user-level, not per repo)</span></pre>
+    </div>
+    <div class="card">
+      <div class="cap" style="margin-bottom:8px">What it contains (the ops manual)</div>
+      <pre style="font-size:11.5px"><span class="hi">Connect</span> : the 5 URLs + $H (Bearer everywhere)
+<span class="hi">Recipes</span> : talk to an agent (POST …/messages)
+           memory    (POST/GET /notes)
+           queue     (add → claim → done, discipline)
+           federation(/federation, /sweep, ?peer=)
+           brief     (morning.mjs + --no-ask)
+           model     (POST …/configure)
+<span class="hi">Extras</span>  : dashboard ?token=, WebSocket ping 25 s
+<span class="hi">Gotchas</span>: STOP the runner before wrangler deploy!
+          free providers → retry ×2 then /configure
+          federation = hub only · jyp = status quo
+<span class="hi">Refs</span>   : GUIDE.md · README.md · presentations</pre>
+    </div>
+  </div>
+  <div class="inner card" style="margin-top:14px;text-align:center">
+    <span class="cap">Why a skill?</span>
+    <div style="font-size:14px;margin-top:6px">The instructions live <b style="color:var(--cyan)">inside pi</b>: any session, in any project, operates the fleet from the first sentence — no re-explaining the API, the token or the gotchas.</div>
+  </div>
+  <div class="foot">9 / 11</div>
+</section>
 <!-- ============ 9 · DASHBOARD MOCK ============ -->
 <section class="slide">
-  <div class="kicker">08 · In picture</div>
+  <div class="kicker">09 · In picture</div>
   <h2>The dashboard, as it appears</h2>
   <p class="sub"><code>GET /dashboard?token=…</code> — faithful mock of the real screen (vanilla JS, served by the hub).</p>
   <div class="inner mock">
@@ -498,12 +543,12 @@ Invoke-RestMethod -Headers $H -Method Post `
       <div class="feedline">10:41:30 <b>pi-scalesviewer</b> changed: <i>notes</i></div>
     </div>
   </div>
-  <div class="foot">9 / 10</div>
+  <div class="foot">10 / 11</div>
 </section>
 
 <!-- ============ 10 · OPS ============ -->
 <section class="slide">
-  <div class="kicker">09 · Operations</div>
+  <div class="kicker">10 · Operations</div>
   <h2>Golden rules & links</h2>
   <p class="sub">What to remember to run the fleet without surprises.</p>
   <div class="inner checklist">
@@ -520,12 +565,12 @@ Invoke-RestMethod -Headers $H -Method Post `
     <a href="https://earendil.com/posts/pi-durable/">Pi Durable post</a>
     <a href="https://pi-global-agent.need-homework.workers.dev/dashboard">Live dashboard</a>
   </div>
-  <div class="foot">10 / 10 — fleet built & verified · pi-agent/README.md</div>
+  <div class="foot"> 11 / 11 — fleet built & verified · pi-agent/README.md</div>
 </section>
 
 <script>
   var slides = Array.prototype.slice.call(document.querySelectorAll(".slide"));
-  var titles = ["Fleet presentation","Foundations","Topology","Inside the DO","Lifecycle","API","Scenarios","Full example","Dashboard","Operations"];
+  var titles = ["Fleet presentation","Foundations","Topology","Inside the DO","Lifecycle","API","Scenarios","Full example","The pi skill","Dashboard","Operations"];
   var dotsBox = document.getElementById("dots");
   var secEl = document.getElementById("sec");
   var bar = document.getElementById("bar");
