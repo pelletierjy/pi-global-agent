@@ -398,30 +398,64 @@
   <p class="sub">The typical morning path — copy-paste as-is (env vars already set on the machine).</p>
   <div class="inner grid" style="grid-template-columns:1fr 1fr;gap:14px">
     <div>
-      <div class="cap" style="margin-bottom:6px">1 · fleet brief</div>
-      <pre>node scripts/morning.mjs
-<span class="cm"># PEER … STATE … PEND … DONE</span>
-<span class="cm"># Open tasks: 9</span>
-<span class="ok">Morning brief … top 3 actions …</span>
-<span class="cm"># saved via add_note ✓</span></pre>
-      <div class="cap" style="margin:12px 0 6px">2 · durable memory</div>
-      <pre>curl -X POST "$PI_AGENT_URL/notes" \
-  -H "Authorization: Bearer $PI_AGENT_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"body":"limits live in models/constants.ts"}'</pre>
+      <div class="cap" style="margin-bottom:6px">0 · once: the environment</div>
+      <pre style="font-size:11px"><span class="cm"># already set as user environment variables</span>
+$env:PI_AGENT_URL  = "https://pi-global-agent.need-homework.workers.dev"
+$env:PI_AGENT_TOKEN = "<token shared by all 5 workers>"
+<span class="cm"># shortcuts used in every example below:</span>
+$base = $env:PI_AGENT_URL   <span class="cm"># target worker (hub or project)</span>
+$H = @{ authorization = "Bearer $env:PI_AGENT_TOKEN" }  <span class="cm"># auth, required everywhere</span></pre>
+
+      <div class="cap" style="margin:10px 0 6px">1 · talk to an agent (durable conversation)</div>
+      <pre style="font-size:11px">Invoke-RestMethod -Headers $H -Method Post `
+  -Uri "$base/conversations/root/messages" `
+  -ContentType 'application/json' `
+  -Body '{"content":"Hi, summarize the project"}' `
+  -TimeoutSec 300
+<span class="cm">#  ^ POST = send a message</span>
+<span class="cm">#  ^ "root" = the agent's main conversation</span>
+<span class="cm">#  ^ wait for the model's answer (~2 s)</span>
+<span class="cm">#  → { "status":"done", "text":"…" }   done = the model answered</span></pre>
+
+      <div class="cap" style="margin:10px 0 6px">2 · durable memory (every future session reads it)</div>
+      <pre style="font-size:11px">Invoke-RestMethod -Headers $H -Method Post -Uri "$base/notes" `
+  -ContentType 'application/json' `
+  -Body '{"body":"limits live in models/constants.ts"}'
+<span class="cm">#  ^ POST /notes : append-only, never overwritten</span>
+Invoke-RestMethod -Headers $H "$base/notes?limit=5"
+<span class="cm">#  ^ GET : last 5 notes, from any machine</span></pre>
     </div>
     <div>
-      <div class="cap" style="margin-bottom:6px">3 · delegate a task, then do it</div>
-      <pre>curl -X POST "$PI_AGENT_URL/tasks" … \
-  -d '{"title":"Fix flaky test"}'
-curl -X POST "$PI_AGENT_URL/tasks/claim" …   <span class="cm"># atomic</span>
-curl -X POST "$PI_AGENT_URL/tasks/1" … \
-  -d '{"status":"done","result":"fixed"}'</pre>
-      <div class="cap" style="margin:12px 0 6px">4 · let the agent code (E)</div>
-      <pre>node runner.mjs &          <span class="cm"># once, on your PC</span>
-curl -X POST "…/conversations/root/messages" … \
-  -d '{"content":"run git status and summarize"}'
-<span class="ok">→ run_command → exec_requests → runner → reply</span></pre>
+      <div class="cap" style="margin-bottom:6px">3 · morning brief (scenario B)</div>
+      <pre style="font-size:11px">node D:\Repos\pi-global-agent\scripts\morning.mjs
+<span class="cm">#  1) table of all 5 peers (state, queues, notes)</span>
+<span class="cm">#  2) list of open tasks across the fleet</span>
+<span class="cm">#  3) the hub writes a prioritized brief (FR)</span>
+<span class="cm">#  4) it saves the brief with its add_note tool</span>
+<span class="cm"># model hiccup? built-in retry ×3</span>
+node ...\morning.mjs --no-ask   <span class="cm"># raw data, no model call</span></pre>
+
+      <div class="cap" style="margin:10px 0 6px">4 · task queue: add → claim → done</div>
+      <pre style="font-size:11px">Invoke-RestMethod -Headers $H -Method Post -Uri "$base/tasks" `
+  -ContentType 'application/json' -Body '{"title":"Fix flaky test"}'
+<span class="cm">#  → {id:1, status:"pending"}  (from any machine)</span>
+$task = Invoke-RestMethod -Headers $H -Method Post "$base/tasks/claim"
+<span class="cm">#  ATOMIC claim: pending → in_progress (single SQL statement)</span>
+Invoke-RestMethod -Headers $H -Method Post "$base/tasks/$($task.id)" `
+  -ContentType 'application/json' `
+  -Body '{"status":"done","result":"fixed: mocked the timeout"}'
+<span class="cm">#  always close with done/failed + an explicit result</span></pre>
+
+      <div class="cap" style="margin:10px 0 6px">5 · let the AGENT really code (scenario E)</div>
+      <pre style="font-size:11px">node D:\Repos\pi-global-agent\runner.mjs
+<span class="cm">#  once per session: local executor (outbound polling, no open port)</span>
+<span class="cm">#  STOP it before any `wrangler deploy`, restart after !</span>
+Invoke-RestMethod -Headers $H -Method Post `
+  -Uri "https://pi-conversia-core.need-homework.workers.dev/conversations/root/messages" `
+  -ContentType 'application/json' `
+  -Body '{"content":"Call run_command: git status then summarize"}' -TimeoutSec 300
+<span class="ok">#  model → run_command → exec_requests (DO waits) → runner executes</span>
+<span class="ok">#  → result flows back → the model answers with the real output</span></pre>
     </div>
   </div>
   <div class="foot">8 / 10</div>

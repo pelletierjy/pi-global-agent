@@ -407,30 +407,64 @@
   <p class="sub">Le parcours typique du matin — copier-coller tel quel (env déjà posé sur la machine).</p>
   <div class="inner grid" style="grid-template-columns:1fr 1fr;gap:14px">
     <div>
-      <div class="cap" style="margin-bottom:6px">1 · brief de la flotte</div>
-      <pre>node scripts/morning.mjs
-<span class="cm"># PEER … STATE … PEND … DONE</span>
-<span class="cm"># Open tasks: 9</span>
-<span class="ok">Morning brief … top 3 actions …</span>
-<span class="cm"># sauvegardé via add_note ✓</span></pre>
-      <div class="cap" style="margin:12px 0 6px">2 · poser de la mémoire</div>
-      <pre>curl -X POST "$PI_AGENT_URL/notes" \
-  -H "Authorization: Bearer $PI_AGENT_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"body":"limites = models/constants.ts"}'</pre>
+      <div class="cap" style="margin-bottom:6px">0 · une fois : les variables</div>
+      <pre style="font-size:11px"><span class="cm"># déjà posées en variables utilisateur</span>
+$env:PI_AGENT_URL  = "https://pi-global-agent.need-homework.workers.dev"
+$env:PI_AGENT_TOKEN = "<token partagé des 5 workers>"
+<span class="cm"># raccourcis réutilisés dans tous les exemples :</span>
+$base = $env:PI_AGENT_URL   <span class="cm"># worker cible (hub ou projet)</span>
+$H = @{ authorization = "Bearer $env:PI_AGENT_TOKEN" }  <span class="cm"># auth, obligatoire partout</span></pre>
+
+      <div class="cap" style="margin:10px 0 6px">1 · parler à un agent (conversation durable)</div>
+      <pre style="font-size:11px">Invoke-RestMethod -Headers $H -Method Post `
+  -Uri "$base/conversations/root/messages" `
+  -ContentType 'application/json' `
+  -Body '{"content":"Salut, résume le projet"}' `
+  -TimeoutSec 300
+<span class="cm">#  ^ POST = on envoie un message</span>
+<span class="cm">#  ^ "root" = la conversation principale de cet agent</span>
+<span class="cm">#  ^ on attend la réponse du modèle (~2 s)</span>
+<span class="cm">#  → { "status":"done", "text":"…" }   done = le modèle a répondu</span></pre>
+
+      <div class="cap" style="margin:10px 0 6px">2 · mémoire durable (toute future session la lit)</div>
+      <pre style="font-size:11px">Invoke-RestMethod -Headers $H -Method Post -Uri "$base/notes" `
+  -ContentType 'application/json' `
+  -Body '{"body":"limites = models/constants.ts"}'
+<span class="cm">#  ^ POST /notes : append, jamais écrasé</span>
+Invoke-RestMethod -Headers $H "$base/notes?limit=5"
+<span class="cm">#  ^ GET : les 5 dernières notes, de n'importe quelle machine</span></pre>
     </div>
     <div>
-      <div class="cap" style="margin-bottom:6px">3 · déléguer une tâche puis la faire</div>
-      <pre>curl -X POST "$PI_AGENT_URL/tasks" … \
-  -d '{"title":"Fix flaky test"}'
-curl -X POST "$PI_AGENT_URL/tasks/claim" …   <span class="cm"># atomique</span>
-curl -X POST "$PI_AGENT_URL/tasks/1" … \
-  -d '{"status":"done","result":"corrigé"}'</pre>
-      <div class="cap" style="margin:12px 0 6px">4 · laisser l'agent coder (E)</div>
-      <pre>node runner.mjs &amp;          <span class="cm"># une fois, sur votre PC</span>
-curl -X POST "…/conversations/root/messages" … \
-  -d '{"content":"git status et résume"}'
-<span class="ok">→ run_command → exec_requests → runner → réponse</span></pre>
+      <div class="cap" style="margin-bottom:6px">3 · brief du matin (scénario B)</div>
+      <pre style="font-size:11px">node D:\Repos\pi-global-agent\scripts\morning.mjs
+<span class="cm">#  1) table des 5 peers (état, files, notes)</span>
+<span class="cm">#  2) liste des tâches ouvertes de la flotte</span>
+<span class="cm">#  3) le hub rédige un brief priorisé (FR)</span>
+<span class="cm">#  4) il l'enregistre via son outil add_note</span>
+<span class="cm"># échec modèle ? re-essai automatique x3</span>
+node ...\morning.mjs --no-ask   <span class="cm"># mêmes données, sans appel de modèle</span></pre>
+
+      <div class="cap" style="margin:10px 0 6px">4 · file de tâches : add → claim → done</div>
+      <pre style="font-size:11px">Invoke-RestMethod -Headers $H -Method Post -Uri "$base/tasks" `
+  -ContentType 'application/json' -Body '{"title":"Fix flaky test"}'
+<span class="cm">#  → {id:1, status:"pending"}  (n'importe quelle machine)</span>
+$task = Invoke-RestMethod -Headers $H -Method Post "$base/tasks/claim"
+<span class="cm">#  prise ATOMIQUE : pending → in_progress (1 seule requête SQL)</span>
+Invoke-RestMethod -Headers $H -Method Post "$base/tasks/$($task.id)" `
+  -ContentType 'application/json' `
+  -Body '{"status":"done","result":"test réparé: mock du timeout"}'
+<span class="cm">#  toujours fermer avec done/failed + un résultat explicite</span></pre>
+
+      <div class="cap" style="margin:10px 0 6px">5 · laisser l'AGENT coder (scénario E)</div>
+      <pre style="font-size:11px">node D:\Repos\pi-global-agent\runner.mjs
+<span class="cm">#  1x par session : exécuteur local (polling sortant, aucune porte ouverte)</span>
+<span class="cm">#  STOP avant tout "wrangler deploy", relance après !</span>
+Invoke-RestMethod -Headers $H -Method Post `
+  -Uri "https://pi-conversia-core.need-homework.workers.dev/conversations/root/messages" `
+  -ContentType 'application/json' `
+  -Body '{"content":"Appelle run_command: git status puis résume"}' -TimeoutSec 300
+<span class="ok">#  modèle → run_command → exec_requests (DO attend) → runner exécute</span>
+<span class="ok">#  → résultat remonté → le modèle répond avec le vrai résultat</span></pre>
     </div>
   </div>
   <div class="foot">8 / 10</div>
