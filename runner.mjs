@@ -27,6 +27,11 @@
  *       projects: { "<AGENT_NAME>": "C:\\\\path\\\\to\\\\repo" }
  *
  * Usage:  node runner.mjs            (polls forever, logs to stdout)
+ *
+ * RATE LIMITS: the free Workers plan allows ~100k requests/day per account.
+ * Every claim IS a worker invocation, so the idle interval matters:
+ * default 30 s x 5 workers = ~14.4k/day. Tune with PI_POLL_MS (min 5000).
+ * When a job IS found the loop drains fast (1 s between cycles).
  */
 import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
@@ -216,7 +221,9 @@ async function main() {
     .filter(Boolean);
   const projects = { ...DEFAULT_PROJECTS, ...(cfg.projects || {}), ...jsonEnv("PI_PROJECTS") };
 
+  const IDLE_MS = Math.max(5000, Number(process.env.PI_POLL_MS) || 30000);
   log(`runner up: ${urls.length} worker(s), ${Object.keys(projects).length} project(s) mapped`);
+  log(`idle poll interval: ${IDLE_MS / 1000}s (free Workers quota ~100k req/day)`);
   for (const [name, dir] of Object.entries(projects)) log(`  ${name} -> ${dir}`);
 
   let sinceLog = Date.now();
@@ -224,8 +231,7 @@ async function main() {
     let didWork = false;
     for (const base of urls) {
       try {
-        // Claim is atomic server-side; one claim per worker per cycle keeps the
-        // loop simple and gives ~1 job/sec/worker throughput.
+        // Claim is atomic server-side: one claim per worker per cycle.
         const claimed = await postJson(`${base}/exec/claim`, token, {}).catch((e) => {
           if (String(e).includes("404")) return null;
           throw e;
@@ -240,11 +246,16 @@ async function main() {
         log(`poll error ${base}: ${err.message}`);
       }
     }
-    if (!didWork && Date.now() - sinceLog > 30000) {
-      log(`idle; polling ${urls.length} worker(s) every 800ms`);
+    if (didWork) {
       sinceLog = Date.now();
+      await sleep(1000); // work found: drain the queue fast
+    } else {
+      if (Date.now() - sinceLog > 120000) {
+        log(`idle; polling ${urls.length} worker(s) every ${IDLE_MS / 1000}s (quota-friendly)`);
+        sinceLog = Date.now();
+      }
+      await sleep(IDLE_MS); // idle: stay well under the free 100k/day
     }
-    await sleep(800);
   }
 }
 

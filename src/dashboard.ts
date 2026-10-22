@@ -172,7 +172,17 @@ export const DASHBOARD_HTML = `<!doctype html>
     });
 
     poll();
-    pollTimer = setInterval(poll, 30000);
+    // Free Workers quota (~100k req/day): poll every 2 minutes and pause while
+    // the tab is hidden — WS "changed" events still trigger instant refreshes.
+    pollTimer = setInterval(poll, 120_000);
+    document.addEventListener("visibilitychange", function () {
+      if (document.hidden) {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      } else if (connected) {
+        poll();
+        if (!pollTimer) pollTimer = setInterval(poll, 120_000);
+      }
+    });
   }
 
   function reconnect(w) {

@@ -373,7 +373,7 @@
       <div class="badge">D</div>
       <svg class="ico" viewBox="0 0 48 48"><rect x="6" y="8" width="36" height="26" rx="3" fill="none" stroke="#00e5ff" stroke-width="2.5"/><rect x="10" y="12" width="12" height="8" fill="#00e5ff" opacity=".7"/><rect x="25" y="12" width="13" height="8" fill="#2979ff" opacity=".7"/><rect x="10" y="23" width="28" height="7" fill="#00e676" opacity=".6"/><path d="M18 40h12M24 34v6" stroke="#00e5ff" stroke-width="2.5" stroke-linecap="round"/></svg>
       <h4>Realtime dashboard</h4>
-      <p><code>/dashboard</code>: 5 cards (state, queues, notes, model) refreshed every 30 s + live WS feed, auto-reconnect.</p>
+      <p><code>/dashboard</code>: 5 cards (state, queues, notes, model) refreshed every 2 min (paused on hidden tabs) + live WS feed, auto-reconnect.</p>
     </div>
     <div class="card">
       <div class="badge">E</div>
@@ -553,6 +553,7 @@ Invoke-RestMethod -Headers $H -Method Post `
   <p class="sub">What to remember to run the fleet without surprises.</p>
   <div class="inner checklist">
     <div class="row warn"><span>⚠</span><span><b>Stop the runner before <code>wrangler deploy</code></b>, restart it after — its polling keeps the Durable Objects alive, and DOs only load new code on restart.</span></div>
+    <div class="row"><span>🧮</span><span><b>Free quota (~100k req/day, resets 00:00 UTC)</b>: runner idle = 1 claim/worker/30 s (<code>PI_POLL_MS</code>), dashboard every 2 min (paused on hidden tab). HTTP 429 / error 1027 = quota spent → wait it out, do not hammer.</span></div>
     <div class="row"><span>🔑</span><span><b>One AGENT_TOKEN for all 5 workers</b> (same value as secret and in <code>.dev.vars</code>); <code>PI_AGENT_URL</code>/<code>PI_AGENT_TOKEN</code> already set as user env vars.</span></div>
     <div class="row"><span>🧠</span><span><b>Models</b>: default <code>google/gemini-3.8-flash</code> (reliable); "free" tiers are flaky (404/429/503) — <code>morning.mjs</code> retries built-in.</span></div>
     <div class="row"><span>🗓</span><span><b>Hub cron</b>: Mondays 13:00 UTC (<code>triggers.crons</code>) = same logic as <code>POST /federation/sweep</code>.</span></div>
@@ -623,3 +624,4 @@ Invoke-RestMethod -Headers $H -Method Post `
 </script>
 </body>
 </html>
+

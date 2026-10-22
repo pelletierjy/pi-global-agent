@@ -97,4 +97,5 @@ Send a message over HTTP (`ask`/`POST …/messages`); the answer streams to the 
 
 ### Operational notes
 - **Stop the runner before `wrangler deploy`, restart it after**: its polling keeps the Durable Objects alive, and DOs only load new code on restart.
+- **Free Workers quota (~100k req/day, resets 00:00 UTC)**: the runner idles at 1 claim per worker every 30 s (`PI_POLL_MS` to tune; drains fast when work exists), the dashboard polls every 2 min and pauses on hidden tabs. HTTP 429 / error 1027 = quota spent — wait for the reset instead of retrying.
 - Dashboard/WS URLs use `*.need-homework.workers.dev` until the `jyp.solutions` custom domains are enabled (the `routes` entry is commented in `wrangler.jsonc`).
