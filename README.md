@@ -83,3 +83,14 @@ Send a message over HTTP (`ask`/`POST …/messages`); the answer streams to the 
 - `global_fetch_strictly_public` is required for `/federation` (same-zone worker→worker `fetch()` is blocked with 1042 otherwise).
 - Custom domains (`pi-*.jyp.solutions`): requires the `jyp.solutions` zone on this Cloudflare account — delegate NS to the assigned Cloudflare nameservers, then re-deploy; update `PEERS` to the new URLs.
 - Workers are unchanged in name (`pi-global-agent`, …); the Durable Object class/migration is the same (`PiAgent`, SQLite) — existing storage and secrets carry over.
+
+## Fleet scenarios (C/D/E/B)
+
+- **Weekly sweep (C)** — the hub cron (`0 13 * * 1`) digests every peer's queue into a hub note and dispatches `SWEEP_TASK` (deduplicated). Manual: `POST /federation/sweep`; results view: `GET /federation/tasks`.
+- **Realtime dashboard (D)** — `GET /dashboard`: five cards (state, queues, notes, model) plus a live WebSocket event feed. Token via `?token=`, the input box, or localStorage.
+- **Local execution (E)** — the model tools `run_command` / `read_file` / `write_file` reach this machine through `runner.mjs`, an outbound-only poller with root-confined file access: `PI_AGENT_TOKEN=... node runner.mjs`.
+- **Morning brief (B)** — `node scripts/morning.mjs` prints every peer's state and open tasks, then asks the hub agent for a prioritized brief (saved to memory with `add_note`). `--no-ask` prints raw data only.
+
+### Operational notes
+- **Stop the runner before `wrangler deploy`, restart it after**: its polling keeps the Durable Objects alive, and DOs only load new code on restart.
+- Dashboard/WS URLs use `*.need-homework.workers.dev` until the `jyp.solutions` custom domains are enabled (the `routes` entry is commented in `wrangler.jsonc`).
