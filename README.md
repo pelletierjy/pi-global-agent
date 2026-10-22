@@ -1,5 +1,8 @@
 # pi-global-agent
 
+> **Guide complet (architecture, fonctionnement, exemples)** : [GUIDE.md](GUIDE.md) — en français.
+> **Référence API** : ce document.
+
 Cloudflare Worker + Durable Object running **[Pi Durable](https://earendil.com/posts/pi-durable/)** (`@earendil-works/pi-durable`) — the **main/global PI agent**. The four project workers (`pi-conversia-core`, `pi-homeworktutora`, `pi-scalesviewer`, `pi-globalvsthost`) run identical code with a different `name`/`AGENT_NAME`.
 
 One singleton SQLite-backed Durable Object per worker hosts:
