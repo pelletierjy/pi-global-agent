@@ -65,6 +65,8 @@ export const DASHBOARD_HTML = `<!doctype html>
   var connected = false;
   var sockets = [];
   var pollTimer = null;
+  var fails = {};   // per-worker reconnect backoff counters (15s -> 60s)
+  var live = 0;      // workers currently streaming
 
   var grid = document.getElementById("grid");
   var lines = document.getElementById("lines");
@@ -138,66 +140,60 @@ export const DASHBOARD_HTML = `<!doctype html>
     btn.textContent = "Disconnect";
     btn.className = "on";
     summary.textContent = "connecting...";
-    var live = 0;
-
-    WORKERS.forEach(function (w) {
-      var ws = new WebSocket(wsUrl(w));
-      sockets.push(ws);
-      ws.onopen = function () { summary.textContent = "live on " + WORKERS.length + " workers"; };
-      ws.onmessage = function (ev) {
-        var m;
-        try { m = JSON.parse(ev.data); } catch (e) { return; }
-        if (m.type === "hello") {
-          live++;
-          document.getElementById("ws-" + w).textContent = "live";
-          document.getElementById("ws-" + w).className = "ws ok";
-          summary.textContent = "live (" + live + "/" + WORKERS.length + ")";
-          feed(w, "<b>hello</b> conversation " + m.conversation);
-        } else if (m.type === "changed") {
-          feed(w, "changed: <b>" + m.scope + "</b>");
-          poll();
-        } else if (m.type === "events") {
-          feed(w, "events: " + (m.events ? m.events.length : 0) + " update(s)");
-        }
-      };
-      ws.onclose = function () {
-        live = Math.max(0, live - 1);
-        var el = document.getElementById("ws-" + w);
-        el.textContent = "disconnected";
-        el.className = "ws";
-        if (connected) feed(w, '<span class="err">ws closed - retrying in 3s</span>');
-        if (connected) setTimeout(function () { if (connected) reconnect(w); }, 3000);
-      };
-      ws.onerror = function () {};
-    });
-
+    live = 0;
+    WORKERS.forEach(openSocket);
     poll();
-    // Free Workers quota (~100k req/day): poll every 2 minutes and pause while
-    // the tab is hidden — WS "changed" events still trigger instant refreshes.
+    // Free Workers + Durable Objects quotas (~100k req/day each): poll every
+    // 2 minutes and pause while the tab is hidden — WS "changed" events still
+    // trigger instant refreshes when the tab is visible.
     pollTimer = setInterval(poll, 120_000);
     document.addEventListener("visibilitychange", function () {
       if (document.hidden) {
         if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        // Hidden tab holds ZERO sockets/requests; onclose sees document.hidden
+        // and will NOT retry (see openSocket), so no reconnect storm.
+        sockets.forEach(function (s) { try { s.close(); } catch (e) {} });
+        sockets = [];
       } else if (connected) {
         poll();
         if (!pollTimer) pollTimer = setInterval(poll, 120_000);
+        WORKERS.forEach(openSocket);
       }
     });
   }
 
-  function reconnect(w) {
+  function openSocket(w) {
     var ws = new WebSocket(wsUrl(w));
     sockets.push(ws);
+    ws.onopen = function () { summary.textContent = "live on " + WORKERS.length + " workers"; };
     ws.onmessage = function (ev) {
       var m; try { m = JSON.parse(ev.data); } catch (e) { return; }
       if (m.type === "hello") {
+        fails[w] = 0;
+        live = Math.min(WORKERS.length, live + 1);
         document.getElementById("ws-" + w).textContent = "live";
         document.getElementById("ws-" + w).className = "ws ok";
-        feed(w, "reconnected");
+        summary.textContent = "live (" + live + "/" + WORKERS.length + ")";
+        feed(w, "<b>hello</b> conversation " + m.conversation);
+      } else if (m.type === "changed") {
+        feed(w, "changed: <b>" + m.scope + "</b>");
         poll();
+      } else if (m.type === "events") {
+        feed(w, "events: " + (m.events ? m.events.length : 0) + " update(s)");
       }
     };
-    ws.onclose = function () { if (connected) setTimeout(function () { reconnect(w); }, 3000); };
+    ws.onclose = function () {
+      live = Math.max(0, live - 1);
+      var el = document.getElementById("ws-" + w);
+      el.textContent = "disconnected";
+      el.className = "ws";
+      if (!connected || document.hidden) return; // no storms: intent off or background tab
+      fails[w] = Math.min(4, (fails[w] || 0) + 1);
+      var delay = Math.min(60000, 15000 * Math.pow(2, fails[w] - 1)); // 15s, 30s, 60s, 60s
+      feed(w, '<span class="err">ws closed - retry in ' + (delay / 1000) + "s</span>");
+      setTimeout(function () { if (connected && !document.hidden) openSocket(w); }, delay);
+    };
+    ws.onerror = function () {};
   }
 
   function disconnect() {
