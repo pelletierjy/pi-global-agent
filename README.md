@@ -2,7 +2,7 @@
 
 > **Guide complet (architecture, fonctionnement, exemples)** : [GUIDE.md](GUIDE.md) — en français.
 > **Référence API** : ce document.
-> **Présentation (slides)** : [FR](PRESENTATION.html) · [EN](PRESENTATION.en.html)
+> **Présentation (slides)** : [FR](docs/index.html) · [EN](docs/en.html)
 
 <img width="1997" height="824" alt="image" src="https://github.com/user-attachments/assets/b345eca8-2208-4e48-af93-4ffcb5431fd5" />
 
