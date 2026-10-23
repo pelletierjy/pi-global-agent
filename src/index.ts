@@ -83,7 +83,7 @@ type AgentState = { status: string; currentTask: string; currentTaskId?: number 
 const TASK_STATUSES: TaskStatus[] = ["pending", "in_progress", "done", "failed"];
 
 /** Default model for new root conversations. Change per conversation via POST /conversations/:id/configure. */
-const DEFAULT_MODEL = { provider: "google", modelId: "gemini-3.8-flash" } as const;
+const DEFAULT_MODEL = { provider: "openrouter", modelId: "nvidia/nemotron-3.5-lightning:free" } as const;
 
 const CORS: Record<string, string> = {
   "access-control-allow-origin": "*",
