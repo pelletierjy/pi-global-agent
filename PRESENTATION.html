@@ -178,7 +178,7 @@
       <span style="color:var(--yellow)">persistant, partout accessible, qui ne perd rien</span>
     </div>
   </div>
-  <div class="foot">2 / 11</div>
+  <div class="foot">2 / 12</div>
 </section>
 
 <!-- ============ 3 · TOPOLOGIE ============ -->
@@ -243,7 +243,7 @@
     <span class="tag g">1 même AGENT_TOKEN</span>
     <span class="tag y">jyp.solutions : config prête, domaine non pris</span>
   </div>
-  <div class="foot">3 / 11</div>
+  <div class="foot">3 / 12</div>
 </section>
 
 <!-- ============ 4 · DANS LE DO ============ -->
@@ -280,7 +280,7 @@
       </div>
     </div>
   </div>
-  <div class="foot">4 / 11</div>
+  <div class="foot">4 / 12</div>
 </section>
 
 <!-- ============ 5 · CYCLE DE VIE ============ -->
@@ -338,7 +338,7 @@
     <div class="card" style="text-align:center"><div class="num">0</div><div class="cap">perdu en cas de crash</div></div>
     <div class="card" style="text-align:center"><div class="num">30 Hz</div><div class="cap">flux WS (partiels)</div></div>
   </div>
-  <div class="foot">5 / 11</div>
+  <div class="foot">5 / 12</div>
 </section>
 
 <!-- ============ 6 · API ============ -->
@@ -363,7 +363,7 @@
       <tr><td><span class="m get">GET</span></td><td>/dashboard</td><td>Cette flotte, en navigateur</td></tr>
     </table>
   </div>
-  <div class="foot">6 / 11</div>
+  <div class="foot">6 / 12</div>
 </section>
 
 <!-- ============ 7 · SCENARIOS ============ -->
@@ -397,7 +397,7 @@
       <p><code>node scripts/morning.mjs</code> : états + tâches ouvertes de la flotte → le hub rédige un brief priorisé (FR) et l'enregistre via <code>add_note</code>. Re-essais intégrés.</p>
     </div>
   </div>
-  <div class="foot">7 / 11</div>
+  <div class="foot">7 / 12</div>
 </section>
 
 <!-- ============ 8 · EXEMPLE ============ -->
@@ -467,7 +467,7 @@ Invoke-RestMethod -Headers $H -Method Post `
 <span class="ok">#  → résultat remonté → le modèle répond avec le vrai résultat</span></pre>
     </div>
   </div>
-  <div class="foot">8 / 11</div>
+  <div class="foot">8 / 12</div>
 </section>
 
 <!-- ============ 9 · LE SKILL ============ -->
@@ -514,7 +514,7 @@ Invoke-RestMethod -Headers $H -Method Post `
     <div style="font-size:14px;margin-top:6px">Les instructions vivent <b style="color:var(--cyan)">dans pi</b> : n'importe quelle session,
     dans n'importe quel projet, exploite la flotte dès la première phrase — sans réexpliquer l'API, le token ni les pièges.</div>
   </div>
-  <div class="foot">9 / 11</div>
+  <div class="foot">9 / 12</div>
 </section>
 <!-- ============ 9 · DASHBOARD MOCK ============ -->
 <section class="slide">
@@ -553,7 +553,7 @@ Invoke-RestMethod -Headers $H -Method Post `
       <div class="feedline">10:41:30 <b>pi-scalesviewer</b> changed: <i>notes</i></div>
     </div>
   </div>
-  <div class="foot">10 / 11</div>
+  <div class="foot">10 / 12</div>
 </section>
 
 <!-- ============ 10 · OPS ============ -->
@@ -576,12 +576,44 @@ Invoke-RestMethod -Headers $H -Method Post `
     <a href="https://earendil.com/posts/pi-durable/">Post Pi Durable</a>
     <a href="https://pi-global-agent.need-homework.workers.dev/dashboard">Dashboard live</a>
   </div>
-  <div class="foot">11 / 11 — flotte construite et vérifiée · pi-agent/README.md</div>
+  <div class="foot">11 / 12 — flotte construite et vérifiée · pi-agent/README.md</div>
 </section>
 
+<!-- ============ 12 · AIDE-MEMOIRE ============ -->
+<section class="slide">
+  <div class="kicker">10 · Aide-mémoire</div>
+  <h2>Les 4 gestes du quotidien</h2>
+  <p class="sub">Toute la flotte tient là : le matin, la mémoire, une question, une délégation.</p>
+  <div class="inner grid scenario">
+    <div class="card"><div class="badge">1 · LE MATIN</div>
+      <h4>node scripts\morning.mjs</h4>
+      <p>Brief priorisé en français sur les 5 agents (re-essais automatiques).<br><code>--no-ask</code> = données brutes, sans appel de modèle.</p></div>
+    <div class="card"><div class="badge">2 · EN QUITTANT</div>
+      <h4>POST /notes</h4>
+      <p><code>{"body":"ce que j'ai compris…"}</code><br>Mémoire permanente : toute future session la relit avec <code>GET /notes</code>.</p></div>
+    <div class="card"><div class="badge">3 · UNE QUESTION</div>
+      <h4>POST /conversations/root/messages</h4>
+      <p><code>{"content":"Résume scalesviewer"}</code><br>Réponse en ~2 s → <code>{status:"done", text:"…"}</code>.</p></div>
+    <div class="card"><div class="badge">4 · DÉLÉGUER</div>
+      <h4>add → claim → done</h4>
+      <p><code>add "…"</code> n'importe où → la session pi du projet <code>claim</code>, ferme par <code>done "résultat"</code>.</p></div>
+  </div>
+  <div class="inner card" style="margin-top:14px">
+    <div class="grid" style="grid-template-columns:repeat(3,1fr);gap:10px;font-size:13px;text-align:center">
+      <div><div style="font-size:22px">🚪🔑</div><b style="color:var(--cyan)">Workers</b><br><span style="color:var(--dim)">les 5 portes : token + routage — aucun état n'y vit</span></div>
+      <div><div style="font-size:22px">🏢</div><b style="color:var(--green)">Durable Object</b><br><span style="color:var(--dim)">le coffre de chaque agent : classeur inéphémérable</span></div>
+      <div><div style="font-size:22px">🧠</div><b style="color:var(--yellow)">Pi Durable</b><br><span style="color:var(--dim)">note AVANT de parler → rien ne se perd</span></div>
+    </div>
+    <div style="margin-top:10px;text-align:center;font-size:12.5px;color:var(--dim)">
+      env déjà posés : <code>$env:PI_AGENT_URL</code> · <code>$env:PI_AGENT_TOKEN</code> &nbsp;|&nbsp;
+      skill pi : <code>/skill:pi-durable-fleet</code> &nbsp;|&nbsp; dashboard : <code>…/dashboard?token=…</code>
+    </div>
+  </div>
+  <div class="foot">12 / 12 — gardez ceci sous la main</div>
+</section>
 <script>
   var slides = Array.prototype.slice.call(document.querySelectorAll(".slide"));
-  var titles = ["Présentation de la flotte","Fondations","Topologie","Anatomie du DO","Cycle de vie","API","Scénarios","Exemple complet","Le skill pi","Dashboard","Exploitation"];
+  var titles = ["Présentation de la flotte","Fondations","Topologie","Anatomie du DO","Cycle de vie","API","Scénarios","Exemple complet","Le skill pi","Dashboard","Exploitation","Aide-mémoire"];
   var dotsBox = document.getElementById("dots");
   var secEl = document.getElementById("sec");
   var bar = document.getElementById("bar");

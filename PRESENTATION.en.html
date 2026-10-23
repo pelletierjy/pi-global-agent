@@ -170,7 +170,7 @@
       <span style="color:var(--yellow)">persistent agent, reachable anywhere, that loses nothing</span>
     </div>
   </div>
-  <div class="foot">2 / 11</div>
+  <div class="foot">2 / 12</div>
 </section>
 
 <!-- ============ 3 · TOPOLOGY ============ -->
@@ -234,7 +234,7 @@
     <span class="tag g">one shared AGENT_TOKEN</span>
     <span class="tag y">jyp.solutions: config ready, domain not taken</span>
   </div>
-  <div class="foot">3 / 11</div>
+  <div class="foot">3 / 12</div>
 </section>
 
 <!-- ============ 4 · INSIDE THE DO ============ -->
@@ -271,7 +271,7 @@
       </div>
     </div>
   </div>
-  <div class="foot">4 / 11</div>
+  <div class="foot">4 / 12</div>
 </section>
 
 <!-- ============ 5 · LIFECYCLE ============ -->
@@ -329,7 +329,7 @@
     <div class="card" style="text-align:center"><div class="num">0</div><div class="cap">lost on crash</div></div>
     <div class="card" style="text-align:center"><div class="num">30 Hz</div><div class="cap">WS stream (partials)</div></div>
   </div>
-  <div class="foot">5 / 11</div>
+  <div class="foot">5 / 12</div>
 </section>
 
 <!-- ============ 6 · API ============ -->
@@ -354,7 +354,7 @@
       <tr><td><span class="m get">GET</span></td><td>/dashboard</td><td>This fleet, in your browser</td></tr>
     </table>
   </div>
-  <div class="foot">6 / 11</div>
+  <div class="foot">6 / 12</div>
 </section>
 
 <!-- ============ 7 · SCENARIOS ============ -->
@@ -388,7 +388,7 @@
       <p><code>node scripts/morning.mjs</code>: fleet states + open tasks → the hub writes a prioritized brief and saves it with <code>add_note</code>. Built-in retries.</p>
     </div>
   </div>
-  <div class="foot">7 / 11</div>
+  <div class="foot">7 / 12</div>
 </section>
 
 <!-- ============ 8 · EXAMPLE ============ -->
@@ -458,7 +458,7 @@ Invoke-RestMethod -Headers $H -Method Post `
 <span class="ok">#  → result flows back → the model answers with the real output</span></pre>
     </div>
   </div>
-  <div class="foot">8 / 11</div>
+  <div class="foot">8 / 12</div>
 </section>
 
 <!-- ============ 9 · THE SKILL ============ -->
@@ -504,7 +504,7 @@ Invoke-RestMethod -Headers $H -Method Post `
     <span class="cap">Why a skill?</span>
     <div style="font-size:14px;margin-top:6px">The instructions live <b style="color:var(--cyan)">inside pi</b>: any session, in any project, operates the fleet from the first sentence — no re-explaining the API, the token or the gotchas.</div>
   </div>
-  <div class="foot">9 / 11</div>
+  <div class="foot">9 / 12</div>
 </section>
 <!-- ============ 9 · DASHBOARD MOCK ============ -->
 <section class="slide">
@@ -543,7 +543,7 @@ Invoke-RestMethod -Headers $H -Method Post `
       <div class="feedline">10:41:30 <b>pi-scalesviewer</b> changed: <i>notes</i></div>
     </div>
   </div>
-  <div class="foot">10 / 11</div>
+  <div class="foot">10 / 12</div>
 </section>
 
 <!-- ============ 10 · OPS ============ -->
@@ -566,12 +566,44 @@ Invoke-RestMethod -Headers $H -Method Post `
     <a href="https://earendil.com/posts/pi-durable/">Pi Durable post</a>
     <a href="https://pi-global-agent.need-homework.workers.dev/dashboard">Live dashboard</a>
   </div>
-  <div class="foot">11 / 11 — fleet built & verified · pi-agent/README.md</div>
+  <div class="foot">11 / 12 — fleet built & verified · pi-agent/README.md</div>
 </section>
 
+<!-- ============ 12 · CHEAT SHEET ============ -->
+<section class="slide">
+  <div class="kicker">10 · Cheat sheet</div>
+  <h2>The 4 daily moves</h2>
+  <p class="sub">The whole fleet in one screen: morning, memory, a question, a delegation.</p>
+  <div class="inner grid scenario">
+    <div class="card"><div class="badge">1 · MORNING</div>
+      <h4>node scripts\morning.mjs</h4>
+      <p>Prioritized French brief across the 5 agents (auto-retries).<br><code>--no-ask</code> = raw data, no model call.</p></div>
+    <div class="card"><div class="badge">2 · WHEN LEAVING</div>
+      <h4>POST /notes</h4>
+      <p><code>{"body":"what I just figured out…"}</code><br>Permanent memory: every future session reads it with <code>GET /notes</code>.</p></div>
+    <div class="card"><div class="badge">3 · A QUESTION</div>
+      <h4>POST /conversations/root/messages</h4>
+      <p><code>{"content":"Summarize scalesviewer"}</code><br>Answer in ~2 s → <code>{status:"done", text:"…"}</code>.</p></div>
+    <div class="card"><div class="badge">4 · DELEGATE</div>
+      <h4>add → claim → done</h4>
+      <p><code>add "…"</code> anywhere → the project's pi session <code>claim</code>s and closes with <code>done "result"</code>.</p></div>
+  </div>
+  <div class="inner card" style="margin-top:14px">
+    <div class="grid" style="grid-template-columns:repeat(3,1fr);gap:10px;font-size:13px;text-align:center">
+      <div><div style="font-size:22px">🚪🔑</div><b style="color:var(--cyan)">Workers</b><br><span style="color:var(--dim)">the 5 doors: token + routing — no state lives here</span></div>
+      <div><div style="font-size:22px">🏢</div><b style="color:var(--green)">Durable Object</b><br><span style="color:var(--dim)">each agent's safe: the everlasting binder</span></div>
+      <div><div style="font-size:22px">🧠</div><b style="color:var(--yellow)">Pi Durable</b><br><span style="color:var(--dim)">writes BEFORE speaking → nothing is lost</span></div>
+    </div>
+    <div style="margin-top:10px;text-align:center;font-size:12.5px;color:var(--dim)">
+      env already set : <code>$env:PI_AGENT_URL</code> · <code>$env:PI_AGENT_TOKEN</code> &nbsp;|&nbsp;
+      pi skill : <code>/skill:pi-durable-fleet</code> &nbsp;|&nbsp; dashboard : <code>…/dashboard?token=…</code>
+    </div>
+  </div>
+  <div class="foot">12 / 12 — keep this at hand</div>
+</section>
 <script>
   var slides = Array.prototype.slice.call(document.querySelectorAll(".slide"));
-  var titles = ["Fleet presentation","Foundations","Topology","Inside the DO","Lifecycle","API","Scenarios","Full example","The pi skill","Dashboard","Operations"];
+  var titles = ["Fleet presentation","Foundations","Topology","Inside the DO","Lifecycle","API","Scenarios","Full example","The pi skill","Dashboard","Operations","Cheat sheet"];
   var dotsBox = document.getElementById("dots");
   var secEl = document.getElementById("sec");
   var bar = document.getElementById("bar");

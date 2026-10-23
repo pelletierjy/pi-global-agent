@@ -5,6 +5,44 @@
 
 ---
 
+## 0. Aide-mémoire — les 4 gestes
+
+> Rien à installer : `PI_AGENT_URL` / `PI_AGENT_TOKEN` sont déjà des variables utilisateur de la machine.
+> Rôles, en une phrase : les **Workers** sont les cinq portes publiques (token + routage, **aucun état**) ;
+> chaque **Durable Object** est le coffre-fort (SQLite) de son agent ; **Pi Durable** note *avant* de parler.
+
+**1 · Le matin — le brief de la flotte**
+```powershell
+node D:\Repos\pi-global-agent\scripts\morning.mjs           # brief priorisé en français (re-essais x3)
+node D:\Repos\pi-global-agent\scripts\morning.mjs --no-ask  # données brutes, sans modèle
+```
+
+**2 · En quittant une session — mémoire permanente**
+```powershell
+Invoke-RestMethod -Headers $H -Method Post -Uri "$base/notes" -ContentType 'application/json' `
+  -Body '{"body":"limites = models/constants.ts, ne pas les déplacer"}'   # append, jamais écrasé
+Invoke-RestMethod -Headers $H "$base/notes?limit=10"                      # relue par toute future session
+```
+
+**3 · Une question à un projet (~2 s)**
+```powershell
+Invoke-RestMethod -Headers $H -Method Post -Uri "$base/conversations/root/messages" -ContentType 'application/json' `
+  -Body '{"content":"Resume l etat et les points ouverts"}' -TimeoutSec 300
+# → { "status":"done", "text":"..." }
+```
+
+**4 · Déléguer du travail (boucle complète)**
+```powershell
+Invoke-RestMethod -Headers $H -Method Post -Uri "$base/tasks" -ContentType 'application/json' -Body '{"title":"...","body":"..."}'   # n'importe où
+Invoke-RestMethod -Headers $H -Method Post "$base/tasks/claim"                                                                       # prise atomique
+Invoke-RestMethod -Headers $H -Method Post "$base/tasks/$id" -ContentType 'application/json' -Body '{"status":"done","result":"..."}' # toujours fermer
+```
+
+Bonus : **dashboard** `https://pi-global-agent.need-homework.workers.dev/dashboard?token=...` ·
+**skill pi** `/skill:pi-durable-fleet` · **modèle par défaut** `google/gemini-3.8-flash` ·
+`$H = @{ authorization = "Bearer $env:PI_AGENT_TOKEN" }` et `$base = $env:PI_AGENT_URL` réutilisés partout.
+---
+
 ## 1. C'est quoi, en trois briques
 
 | Brique | Rôle |
