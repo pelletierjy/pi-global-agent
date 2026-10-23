@@ -91,7 +91,7 @@ Send a message over HTTP (`ask`/`POST …/messages`); the answer streams to the 
 ## Fleet scenarios (C/D/E/B)
 
 - **Weekly sweep (C)** — the hub cron (`0 13 * * 1`) digests every peer's queue into a hub note and dispatches `SWEEP_TASK` (deduplicated). Manual: `POST /federation/sweep`; results view: `GET /federation/tasks`.
-- **Realtime dashboard (D)** — `GET /dashboard`: five cards (state, queues, notes, model) plus a live WebSocket event feed. Token via `?token=`, the input box, or localStorage.
+- **Realtime dashboard (D)** — `GET /dashboard`: five cards (state, queues, notes, model) plus a live WebSocket event feed — and it is **interactive**: quick-add tasks per agent, mark pending tasks done with a result, read/add notes, ask any agent from the toolbar (dropdown + question), plus hub **Brief** (morning brief) and **Sweep** buttons. Token via `?token=`, the input box, or localStorage. Every control costs a request only on click (quota-friendly); details panels load lazily and refresh on WS `changed` events.
 - **Local execution (E)** — the model tools `run_command` / `read_file` / `write_file` reach this machine through `runner.mjs`, an outbound-only poller with root-confined file access: `PI_AGENT_TOKEN=... node runner.mjs`.
 - **Morning brief (B)** — `node scripts/morning.mjs` prints every peer's state and open tasks, then asks the hub agent for a prioritized brief (saved to memory with `add_note`). `--no-ask` prints raw data only.
 
