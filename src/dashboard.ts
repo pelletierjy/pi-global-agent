@@ -114,6 +114,7 @@ export const DASHBOARD_HTML = `<!doctype html>
   var fails = {};   // per-worker reconnect backoff (15s -> 60s)
   var live = 0;
   var loaded = {};  // per-worker: are the detail lists already fetched?
+  var seen = {};    // per-worker: distinguishes first connect from reconnect in the feed
 
   var gridEl = document.getElementById("grid");
   var lines = document.getElementById("lines");
@@ -378,7 +379,9 @@ export const DASHBOARD_HTML = `<!doctype html>
         document.getElementById("ws-" + w).textContent = "live";
         document.getElementById("ws-" + w).className = "ws ok";
         summary.textContent = "live (" + live + "/" + WORKERS.length + ")";
-        feed(w, "<b>hello</b> conversation " + m.conversation);
+        var convLabel = String(m.conversation) === "1" ? "root" : "conversation " + m.conversation;
+        feed(w, "<b>" + (seen[w] ? "reconnected" : "connected") + "</b> · streaming " + convLabel + " events");
+        seen[w] = true;
       } else if (m.type === "changed") {
         feed(w, "changed: <b>" + m.scope + "</b>");
         if (m.scope === "tasks" || m.scope === "notes") { if (loaded[w]) refreshAll(w); }
@@ -405,6 +408,7 @@ export const DASHBOARD_HTML = `<!doctype html>
     token = document.getElementById("token").value.trim();
     if (token) localStorage.setItem("pi_token", token);
     connected = true;
+    seen = {};
     btn.textContent = "Disconnect";
     btn.className = "on";
     summary.textContent = "connecting...";
