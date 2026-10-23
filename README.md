@@ -1,8 +1,9 @@
 # pi-global-agent
 
-> **Guide complet (architecture, fonctionnement, exemples)** : [GUIDE.md](GUIDE.md) — en français.
-> **Référence API** : ce document.
-> **Présentation (slides)** : `https://pelletierjy.github.io/pi-global-agent`
+**Guide complet (architecture, fonctionnement, exemples)** : [GUIDE.md](GUIDE.md) — en français.
+**Référence API** : ce document.
+**Présentation (slides)** : 
+    https://pelletierjy.github.io/pi-global-agent
 
 <img width="1997" height="824" alt="image" src="https://github.com/user-attachments/assets/b345eca8-2208-4e48-af93-4ffcb5431fd5" />
 
