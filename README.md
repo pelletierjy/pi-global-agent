@@ -4,6 +4,8 @@
 > **Référence API** : ce document.
 > **Présentation (slides)** : [FR](PRESENTATION.html) · [EN](PRESENTATION.en.html)
 
+<img width="1997" height="824" alt="image" src="https://github.com/user-attachments/assets/b345eca8-2208-4e48-af93-4ffcb5431fd5" />
+
 Cloudflare Worker + Durable Object running **[Pi Durable](https://earendil.com/posts/pi-durable/)** (`@earendil-works/pi-durable`) — the **main/global PI agent**. The four project workers (`pi-conversia-core`, `pi-homeworktutora`, `pi-scalesviewer`, `pi-globalvsthost`) run identical code with a different `name`/`AGENT_NAME`.
 
 One singleton SQLite-backed Durable Object per worker hosts:
