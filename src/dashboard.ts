@@ -831,8 +831,8 @@ export const DASHBOARD_HTML = `<!doctype html>
     var html = rows.map(function (r) {
       var res = String(r.t.result || "");
       return "<tr><td>" + esc(r.w) + "</td><td>#" + r.t.id + "</td><td>" + chipFor(r.t.status) + "</td>" +
-        "<td title=\"" + esc(String(r.t.title)).replace(/\"/g, "&quot;") + "\">" + esc(String(r.t.title)).slice(0, 90) + "</td>" +
-        "<td class=\"res\" title=\"" + esc(res).replace(/\"/g, "&quot;") + "\">" + esc(res.slice(0, 220)) + (res.length > 220 ? "…" : "") + "</td>" +
+        '<td title="' + esc(String(r.t.title)).replace(/"/g, "&quot;") + '">' + esc(String(r.t.title)).slice(0, 90) + "</td>" +
+        '<td class="res" title="' + esc(res).replace(/"/g, "&quot;") + '">' + esc(res.slice(0, 220)) + (res.length > 220 ? "…" : "") + "</td>" +
         "<td>" + age(r.t.updated_at || r.t.created_at) + "</td></tr>";
     }).join("");
     document.getElementById("resTable").innerHTML =
