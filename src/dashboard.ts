@@ -61,6 +61,19 @@ export const DASHBOARD_HTML = `<!doctype html>
           padding: 4px 8px; margin: 4px 0; }
   .note .ts { color: #8a96b8; }
   .empty { color: #8a96b8; font-size: 11.5px; font-style: italic; }
+  .mflag { color: #ffd740; }
+  .mdef { color: #8a96b8; }
+  #quota { display: none; margin: 8px 16px 0; border: 1px solid #ff1744;
+           background: rgba(255,23,68,.12); color: #ff8a80; border-radius: 8px;
+           padding: 8px 12px; font-size: 12px; }
+  #totals, #cron { font-size: 11px; color: #7ea8ff; }
+  .tfilters { display: flex; gap: 4px; flex-wrap: wrap; margin: 6px 0 4px; }
+  .tfilters button { padding: 1px 7px; font-size: 10.5px; border-color: #1e2a4a; color: #8a96b8; }
+  .tfilters button.on { border-color: #00e5ff; color: #00e5ff; }
+  .trow .age { color: #8a96b8; font-size: 10.5px; min-width: 32px; text-align: right; }
+  .trow.failed { background: rgba(255,23,68,.10); border-radius: 6px; padding: 3px 4px; }
+  .trow.failed .ttitle { color: #ff8a80; }
+  .trow.done .ttitle { color: #8a96b8; }
   #feed { margin: 0 16px 24px; border: 1px solid #1e2a4a; border-radius: 10px;
           background: #080c14; padding: 10px 14px; max-height: 220px; overflow-y: auto; }
   #feed h3 { margin: 0 0 6px; font-size: 12px; color: #00e5ff; }
@@ -79,8 +92,11 @@ export const DASHBOARD_HTML = `<!doctype html>
   <input id="token" type="password" placeholder="AGENT_TOKEN" />
   <button id="btn">Connect</button>
   <span id="summary" class="ws">idle</span>
+  <span id="totals" class="ws" title="Sum of all 5 queues"></span>
+  <span id="cron" class="ws" title="Next hub sweep (cron: Monday 13:00 UTC)"></span>
   <span style="margin-left:auto" class="ws">quotas: 2-min poll, hidden tabs = 0 requests</span>
 </header>
+<div id="quota"></div>
 
 <div id="toolbar">
   <select id="askWorker"></select>
@@ -115,6 +131,8 @@ export const DASHBOARD_HTML = `<!doctype html>
   var live = 0;
   var loaded = {};  // per-worker: are the detail lists already fetched?
   var seen = {};    // per-worker: distinguishes first connect from reconnect in the feed
+  var tfilter = {}; // per-worker task-list filter (default: open)
+  var actModel = {}; // per-worker: active model of the root conversation
 
   var gridEl = document.getElementById("grid");
   var lines = document.getElementById("lines");
@@ -144,8 +162,33 @@ export const DASHBOARD_HTML = `<!doctype html>
     });
     var text = await res.text();
     var out; try { out = JSON.parse(text); } catch (e) { out = text; }
+    if (res.status === 429 || (typeof out === "string" && out.indexOf("1027") >= 0)) showQuota();
     if (!res.ok) throw new Error("HTTP " + res.status + " " + (typeof out === "string" ? out.slice(0, 120) : JSON.stringify(out).slice(0, 160)));
     return out;
+  }
+
+  function showQuota() {
+    var q = document.getElementById("quota");
+    if (!q) return;
+    q.style.display = "block";
+    q.textContent = "⚠ Cloudflare free quota exhausted (HTTP 429 / error 1027) — " +
+                    "requests are failing; wait for the reset at 00:00 UTC.";
+    clearTimeout(showQuota._t);
+    showQuota._t = setTimeout(function () { q.style.display = "none"; }, 120000);
+  }
+
+  function updateCron() {
+    var el = document.getElementById("cron");
+    if (!el) return;
+    var now = new Date();
+    var next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 13, 0, 0));
+    var add = (8 - next.getUTCDay()) % 7;              // days until Monday
+    if (add === 0 && now.getTime() > next.getTime()) add = 7;
+    next.setUTCDate(next.getUTCDate() + add);
+    var ms = next.getTime() - now.getTime();
+    var h = Math.floor(ms / 3600000), d = Math.floor(h / 24);
+    el.textContent = "next sweep: " +
+      (d > 0 ? d + "d " + (h % 24) + "h" : h + "h " + Math.floor((ms % 3600000) / 60000) + "m");
   }
 
   function feed(who, html) {
@@ -186,10 +229,17 @@ export const DASHBOARD_HTML = `<!doctype html>
       '</div>' +
       '<details class="more" data-details="' + w + '">' +
         '<summary>tasks &amp; notes</summary>' +
+        '<div class="tfilters" id="tf-' + w + '"></div>' +
         '<div class="tasklist" id="tl-' + w + '"><span class="empty">loading…</span></div>' +
         '<div class="noteslist" id="nl-' + w + '"><span class="empty">loading…</span></div>' +
         '<button class="mini" data-addnote="' + w + '">+ note</button> ' +
-        '<button class="mini" data-refresh="' + w + '">refresh</button>' +
+        '<button class="mini" data-refresh="' + w + '">refresh</button> ' +
+        '<button class="mini" data-usage="' + w + '">usage</button>' +
+        '<div class="meta" id="usage-' + w + '"></div>' +
+        '<div class="qadd" style="margin-top:6px">' +
+          '<input id="newmodel-' + w + '" placeholder="set model: provider/model" />' +
+          '<button class="mini" data-setmodel="' + w + '">set</button>' +
+        '</div>' +
       '</details>';
     gridEl.appendChild(el);
     cards[w] = el;
@@ -214,6 +264,39 @@ export const DASHBOARD_HTML = `<!doctype html>
 
     el.querySelector("[data-refresh]").addEventListener("click", function () { refreshAll(w); });
 
+    el.querySelector("[data-usage]").addEventListener("click", async function () {
+      var box = el.querySelector("#usage-" + w);
+      try {
+        var u = await api(baseOf(w), "/usage");
+        var models = u.models || {};
+        var total = 0, parts = [];
+        Object.keys(models).forEach(function (k) {
+          var c = (models[k].cost && models[k].cost.total) || 0;
+          total += c;
+          parts.push(k + " $" + c.toFixed(4) + " (" + models[k].totalTokens + " tok)");
+        });
+        box.textContent = parts.length
+          ? "usage: " + parts.join(" · ") + " · TOTAL $" + total.toFixed(4)
+          : "usage: no data yet";
+      } catch (err) { box.textContent = "usage error: " + err.message; }
+    });
+
+    el.querySelector("[data-setmodel]").addEventListener("click", async function () {
+      var v = el.querySelector("#newmodel-" + w).value.trim();
+      var slash = v.indexOf("/");
+      if (slash <= 0 || slash === v.length - 1) {
+        feed(w, '<span class="err">model must be provider/model (e.g. google/gemini-3.8-flash)</span>');
+        return;
+      }
+      try {
+        await api(baseOf(w), "/conversations/root/configure", "POST",
+          { agent: { model: { provider: v.slice(0, slash), modelId: v.slice(slash + 1) } } });
+        feed(w, "model → <b>" + v.replace(/</g, "&lt;") + "</b>");
+        el.querySelector("#newmodel-" + w).value = "";
+        poll();
+      } catch (err) { feed(w, '<span class="err">configure failed: ' + err.message + "</span>"); }
+    });
+
     el.querySelector("[data-notes]").addEventListener("click", function () {
       var d = el.querySelector("details[data-details]");
       d.open = true; refreshAll(w);
@@ -230,35 +313,100 @@ export const DASHBOARD_HTML = `<!doctype html>
     });
   });
 
+  var F_TASKS = [
+    ["open", "open"], ["pending", "pending"], ["in_progress", "working"],
+    ["done", "done"], ["failed", "failed"], ["all", "all"]
+  ];
+
+  function age(ts) {
+    if (!ts) return "";
+    var s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+    if (s < 60) return s + "s";
+    if (s < 3600) return Math.floor(s / 60) + "m";
+    if (s < 86400) return Math.floor(s / 3600) + "h";
+    return Math.floor(s / 86400) + "d";
+  }
+
   async function refreshAll(w) {
     try {
-      var tasks = await api(baseOf(w), "/tasks?limit=10");
-      var pending = tasks.filter(function (t) { return t.status === "pending" || t.status === "in_progress"; });
+      var tasks = await api(baseOf(w), "/tasks?limit=30");
+      var f = tfilter[w] || "open";
+      var shown = tasks.filter(function (t) {
+        return f === "all" ? true
+          : f === "open" ? (t.status === "pending" || t.status === "in_progress")
+          : t.status === f;
+      });
+      var tf = document.getElementById("tf-" + w);
+      tf.innerHTML = "";
+      F_TASKS.forEach(function (pair) {
+        var b = document.createElement("button");
+        b.className = "mini" + (f === pair[0] ? " on" : "");
+        b.textContent = pair[1];
+        b.onclick = function () { tfilter[w] = pair[0]; refreshAll(w); };
+        tf.appendChild(b);
+      });
       var tl = document.getElementById("tl-" + w);
-      if (!pending.length) tl.innerHTML = '<span class="empty">no open tasks</span>';
+      if (!shown.length) tl.innerHTML = '<span class="empty">no ' + (f === "all" ? "" : f + " ") + 'tasks</span>';
       else {
         tl.innerHTML = "";
-        pending.forEach(function (t) {
+        shown.forEach(function (t) {
           var row = document.createElement("div");
-          row.className = "trow" + (t.status === "in_progress" ? " inprog" : "");
+          row.className = "trow" +
+            (t.status === "in_progress" ? " inprog" : "") +
+            (t.status === "failed" ? " failed" : "") +
+            (t.status === "done" ? " done" : "");
+          var actions =
+            t.status === "pending"
+              ? '<button class="mini" data-claim="' + t.id + '">claim</button>' +
+                '<button class="mini" data-done="' + t.id + '">done</button>'
+              : t.status === "in_progress"
+              ? '<span class="ws">working…</span>' +
+                '<button class="mini" data-done="' + t.id + '">done</button>' +
+                '<button class="mini" data-failed="' + t.id + '">fail</button>'
+              : t.status === "failed"
+              ? '<button class="mini" data-reopen="' + t.id + '">reopen</button>'
+              : "";
           row.innerHTML =
+            '<span class="age">' + age(t.created_at) + '</span>' +
             '<span class="tid">#' + t.id + '</span>' +
-            '<span class="ttitle" title="' + String(t.title).replace(/"/g, "&quot;") + '">' + String(t.title).replace(/</g, "&lt;") + "</span>" +
-            (t.status === "pending"
-              ? '<button class="mini" data-done="' + t.id + '">done</button>'
-              : '<span class="ws">working…</span>');
+            '<span class="ttitle" title="' + String(t.title).replace(/"/g, "&quot;") +
+              (t.status === "failed" && t.result ? " — " + String(t.result).replace(/"/g, "&quot;") : "") +
+              '">' + String(t.title).replace(/</g, "&lt;") + "</span>" +
+            actions;
           tl.appendChild(row);
         });
+        function post(id, payload, label) {
+          api(baseOf(w), "/tasks/" + id, "POST", payload).then(function () {
+            feed(w, "task #" + id + " → " + label);
+            refreshAll(w); poll();
+          }).catch(function (err) {
+            feed(w, '<span class="err">' + label + ' failed: ' + err.message + "</span>");
+          });
+        }
         tl.querySelectorAll("[data-done]").forEach(function (b) {
-          b.addEventListener("click", async function () {
+          b.addEventListener("click", function () {
             var id = this.getAttribute("data-done");
             var result = prompt("Result for #" + id + ":", "done from dashboard");
             if (result === null) return;
-            try {
-              await api(baseOf(w), "/tasks/" + id, "POST", { status: "done", result: result });
-              feed(w, "task #" + id + " → done");
-              refreshAll(w);
-            } catch (err) { feed(w, '<span class="err">done failed: ' + err.message + "</span>"); }
+            post(id, { status: "done", result: result }, "done");
+          });
+        });
+        tl.querySelectorAll("[data-failed]").forEach(function (b) {
+          b.addEventListener("click", function () {
+            var id = this.getAttribute("data-failed");
+            var result = prompt("Failure reason for #" + id + ":", "");
+            if (result === null) return;
+            post(id, { status: "failed", result: result || "failed from dashboard" }, "failed");
+          });
+        });
+        tl.querySelectorAll("[data-claim]").forEach(function (b) {
+          b.addEventListener("click", function () {
+            post(this.getAttribute("data-claim"), { status: "in_progress" }, "claimed");
+          });
+        });
+        tl.querySelectorAll("[data-reopen]").forEach(function (b) {
+          b.addEventListener("click", function () {
+            post(this.getAttribute("data-reopen"), { status: "pending" }, "reopened");
           });
         });
       }
@@ -288,6 +436,7 @@ export const DASHBOARD_HTML = `<!doctype html>
 
   /* ---------- periodic status (visible tabs only) ---------- */
   async function poll() {
+    var tot = { pending: 0, in_progress: 0, done: 0, failed: 0 };
     for (var i = 0; i < WORKERS.length; i++) {
       var w = WORKERS[i];
       try {
@@ -299,9 +448,25 @@ export const DASHBOARD_HTML = `<!doctype html>
         document.getElementById("prog-" + w).textContent = s.counts.in_progress;
         document.getElementById("done-" + w).textContent = s.counts.done;
         document.getElementById("notes-" + w).textContent = s.notes;
-        document.getElementById("model-" + w).textContent =
-          (s.defaultModel ? s.defaultModel.provider + "/" + s.defaultModel.modelId : "") +
-          "  |  conv:" + s.conversations;
+        tot.pending += s.counts.pending || 0;
+        tot.in_progress += s.counts.in_progress || 0;
+        tot.done += s.counts.done || 0;
+        tot.failed += s.counts.failed || 0;
+        var def = s.defaultModel ? s.defaultModel.provider + "/" + s.defaultModel.modelId : "?";
+        var active = def;
+        try {
+          var conv = await api(baseOf(w), "/conversations/root");
+          if (conv.agent && conv.agent.model) {
+            active = conv.agent.model.provider + "/" + conv.agent.model.modelId;
+          }
+        } catch (e2) { /* fall back to default */ }
+        actModel[w] = active;
+        var esc = function (x) { return String(x).replace(/</g, "&lt;"); };
+        var meta = "model: " + esc(active);
+        if (active !== def) meta += ' <span class="mflag">&#9873; custom (default: ' + esc(def) + ")</span>";
+        else meta += ' <span class="mdef">(default)</span>';
+        meta += "  |  conv:" + s.conversations;
+        document.getElementById("model-" + w).innerHTML = meta;
         document.getElementById("ws-" + w).textContent = connected ? "live" : "status ok";
         document.getElementById("ws-" + w).className = "ws ok";
       } catch (e) {
@@ -310,6 +475,10 @@ export const DASHBOARD_HTML = `<!doctype html>
         el.className = "ws err";
       }
     }
+    var totEl = document.getElementById("totals");
+    if (totEl) totEl.textContent = "queues: " + tot.pending + " pending · " + tot.in_progress +
+      " working · " + tot.done + " done · " + tot.failed + " failed";
+    updateCron();
   }
 
   /* ---------- ask / brief / sweep ---------- */
