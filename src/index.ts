@@ -432,7 +432,7 @@ async function runSweep(env: Env): Promise<Response> {
   // nothing in the fleet auto-claims. The peer commits the message BEFORE running
   // it (pi-durable golden rule), so the nudge lands even if we stop waiting.
   // requestId makes the nudge exactly-once per sweep run; all peers in parallel.
-  const relay = await Promise.all(
+  const relay = await Promise.all([
     peers.map(async (peer) => {
       const pending = pendingByPeer.get(peer.name) ?? [];
       if (!pending.length) return { peer: peer.name, skipped: "no pending" };
@@ -464,7 +464,53 @@ async function runSweep(env: Env): Promise<Response> {
         ),
       ]);
     }),
-  );
+    // Hub self-nudge: the hub's own queue is NOT in PEERS, so give it the same
+    // relay via an internal DO call (auth already handled at the worker edge).
+    (async () => {
+      const name = `${env.AGENT_NAME} (hub self)`;
+      try {
+        const stub = env.PiAgent.get(env.PiAgent.idFromName(DEFAULT_INSTANCE));
+        const res = await stub.fetch(new Request("https://pi-agent/tasks?status=pending&limit=50"));
+        const pending = (res.ok ? await res.json() : []) as { id: number; title: string }[];
+        if (!pending.length) return { peer: name, skipped: "no pending" };
+        const list = pending.slice(0, 10).map((t) => `- #${t.id} ${t.title}`);
+        const content = [
+          `HUB SWEEP RELAY (automated from pi-global-agent, run ${runAt}).`,
+          `Your queue has ${pending.length} pending task(s):`,
+          ...list,
+          ...(pending.length > 10 ? [`(+${pending.length - 10} more: GET /tasks?status=pending)`] : []),
+          "",
+          "Claim them oldest-first with the claim_task tool (atomic; omit taskId = oldest pending), do the",
+          "work, then close each with complete_task(taskId, status='done'|'failed', result='<what happened>').",
+          "Blocked (e.g. no local runner for run_command)? Do the part you can: close failed with the",
+          "precise blocker, or leave it pending and add_note why.",
+          "When finished, add_note a one-line summary of what you claimed and the outcome.",
+        ]
+          .filter(Boolean)
+          .join("\n");
+        return await Promise.race([
+          stub
+            .fetch(
+              new Request("https://pi-agent/conversations/root/messages", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({
+                  content,
+                  requestId: `sweep-relay-${runAt}-self`,
+                }),
+              }),
+            )
+            .then((r) => ({ peer: name, sent: r.ok, status: r.status }))
+            .catch((e) => ({ peer: name, error: String(e) })),
+          new Promise((resolve) =>
+            setTimeout(() => resolve({ peer: name, sent: true, unconfirmed: true }), 25_000),
+          ),
+        ]);
+      } catch (e) {
+        return { peer: name, error: String(e) };
+      }
+    })(),
+  ]);
 
   const digest =
     `Sweep ${runAt} | self: pending=${selfCounts.pending ?? '?'} done=${selfCounts.done ?? '?'} | ` +
@@ -560,7 +606,7 @@ export class PiAgent {
       model: { ...DEFAULT_MODEL },
       instructions:
         `You are the ${this.env.AGENT_NAME} PI agent. ` +
-        "You have a durable mission-control queue (list_tasks, claim_task, complete_task) and session " +
+        "You have a durable mission-control queue (list_tasks, add_task, claim_task, complete_task) and session " + +
         "memory (add_note): claim a task before working it, always close it with done/failed + a " +
         "meaningful result, and record decisions with add_note so future sessions keep the context.",
     };
@@ -599,6 +645,27 @@ export class PiAgent {
           execute: async (args: { body: string }) => {
             await db.run(`INSERT INTO notes (body, created_at) VALUES (?, ?)`, args.body, Date.now());
             return { output: [{ type: "text" as const, text: "note saved" }] };
+          },
+        }),
+        defineTool({
+          name: "add_task",
+          description:
+            "Create a new task in this agent's durable queue (status pending). Use this whenever " +
+            "the user asks to create/add a task — never use add_note for tasks.",
+          parameters: Type.Object({ title: Type.String(), body: Type.Optional(Type.String()) }),
+          execute: async (args: { title: string; body?: string }) => {
+            const now = Date.now();
+            const row = await db.get(
+              `INSERT INTO tasks (title, body, status, created_at, updated_at)
+               VALUES (?, ?, 'pending', ?, ?) RETURNING *`,
+              args.title,
+              args.body ?? null,
+              now,
+              now,
+            );
+            return {
+              output: [{ type: "text" as const, text: `task created: ${JSON.stringify(row, null, 2)}` }],
+            };
           },
         }),
         defineTool({
