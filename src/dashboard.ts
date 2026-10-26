@@ -117,6 +117,21 @@ export const DASHBOARD_HTML = `<!doctype html>
   .ctrl { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; align-items: center; }
   .ctrl input { min-width: 120px; flex: 1; font-size: 12px; padding: 4px 8px; }
   .notif.on { border-color: var(--green); color: var(--green); }
+  .kcols { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+  .kcol { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 8px; min-height: 70px; }
+  .kcol.c-failed { border-color: var(--red); }
+  .khead { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); margin-bottom: 2px; }
+  .khead.k-pending { color: var(--yellow); }
+  .khead.k-in_progress { color: var(--cyan); }
+  .khead.k-done { color: var(--green); }
+  .khead.k-failed { color: var(--red); }
+  .kcard { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; margin-top: 8px; font-size: 11.5px; }
+  .kcard .kt { margin-top: 4px; color: var(--text); word-break: break-word; }
+  .kcard .age { color: var(--dim); font-size: 10.5px; }
+  .kres { color: var(--redsoft); font-size: 10.5px; margin-top: 4px; word-break: break-word; }
+  .khead.k-paused { color: var(--dim); }
+  .kcol.c-paused { border-style: dashed; border-color: var(--yellow); }
+  .kact { display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap; }
   #feed { margin: 0 16px 24px; border: 1px solid var(--border); border-radius: 10px;
           background: var(--feedbg); padding: 10px 14px; max-height: 220px; overflow-y: auto; }
   #feed h3 { margin: 0 0 6px; font-size: 12px; color: var(--cyan); }
@@ -155,6 +170,7 @@ export const DASHBOARD_HTML = `<!doctype html>
 
 <nav id="tabs">
   <button class="on" data-view="cards">cards</button>
+  <button data-view="kanban">kanban</button>
   <button data-view="fed">federation</button>
   <button data-view="results">results</button>
   <button data-view="conv">conversations</button>
@@ -164,6 +180,13 @@ export const DASHBOARD_HTML = `<!doctype html>
 </nav>
 
 <div id="view-cards" class="view on"><div id="grid"></div></div>
+
+<div id="view-kanban" class="view">
+  <div class="viewhead"><b class="vtitle">Kanban — all queues by status</b>
+    <span class="empty" id="kbInfo"></span>
+    <button class="mini" id="kbRefresh">refresh</button></div>
+  <div class="panel"><div class="kcols" id="kbBoard"><span class="empty">loads when this tab opens</span></div></div>
+</div>
 
 <div id="view-fed" class="view">
   <div class="panel"><h3>Federation status <button class="mini" id="fedRefresh">refresh</button></h3>
@@ -760,7 +783,7 @@ export const DASHBOARD_HTML = `<!doctype html>
   }
   function num(x) { return typeof x === "number" ? x : "-"; }
 
-  var VIEWS = ["cards", "fed", "results", "conv", "notes", "exec", "costs"];
+  var VIEWS = ["cards", "kanban", "fed", "results", "conv", "notes", "exec", "costs"];
   document.querySelectorAll("#tabs button").forEach(function (b) {
     b.addEventListener("click", function () {
       document.querySelectorAll("#tabs button").forEach(function (x) { x.className = ""; });
@@ -770,7 +793,8 @@ export const DASHBOARD_HTML = `<!doctype html>
         var el = document.getElementById("view-" + name);
         if (el) el.className = name === v ? "view on" : "view";
       });
-      if (v === "fed") loadFed();
+      if (v === "kanban") loadKanban();
+      else if (v === "fed") loadFed();
       else if (v === "results") loadResults();
       else if (v === "conv") loadConvList();
       else if (v === "notes") loadNotes();
@@ -778,6 +802,108 @@ export const DASHBOARD_HTML = `<!doctype html>
       else if (v === "costs") loadCosts();
     });
   });
+
+  /* --- kanban view (cross-agent tasks by status) --- */
+  var KB_COLS = [["pending", "pending"], ["in_progress", "working"], ["paused", "paused"], ["done", "done"], ["failed", "failed"]];
+  var KB_ALL = [];
+  function kactHtml(r) {
+    var st = r.t.status;
+    if (st === "done") return "";
+    var key = r.w + "|" + r.t.id;
+    var btns = "";
+    if (st === "pending" || st === "in_progress") {
+      btns += '<button class="mini" data-kp="' + key + '" title="Pause this task (excluded from claims)">⏸ pause</button>';
+    }
+    if (st === "paused") {
+      btns += '<button class="mini" data-kr="' + key + '" title="Resume: back to pending">▶ resume</button>';
+    }
+    btns += '<button class="mini" data-kt="' + key + '" title="Trigger execution now on this agent">⚡ run now</button>';
+    return '<div class="kact">' + btns + "</div>";
+  }
+  async function loadKanban() {
+    var box = document.getElementById("kbBoard");
+    box.innerHTML = '<span class="empty">loading…</span>';
+    try {
+      var lists = await Promise.all(WORKERS.map(function (w) {
+        return api(baseOf(w), "/tasks?limit=50").then(function (rows) {
+          return (rows || []).map(function (t) { return { w: w, t: t }; });
+        }).catch(function () { return []; });
+      }));
+      var all = [];
+      lists.forEach(function (l) { all = all.concat(l); });
+      KB_ALL = all;
+      var html = "";
+      KB_COLS.forEach(function (col) {
+        var st = col[0];
+        var rows = all.filter(function (r) { return r.t.status === st; })
+          .sort(function (a, b) { return (a.t.created_at || 0) - (b.t.created_at || 0); });
+        html += '<div class="kcol c-' + st + '"><div class="khead k-' + st + '">' + col[1] + " · " + rows.length + "</div>";
+        rows.forEach(function (r) {
+          var title = String(r.t.title || "");
+          var res = String(r.t.result || "");
+          var tip = esc(title).replace(/"/g, "&quot;") + (res ? " — " + esc(res).replace(/"/g, "&quot;") : "");
+          html += '<div class="kcard" title="' + tip + '">' +
+            '<span class="chip">' + esc(r.w) + "</span> " +
+            '<span class="age">#' + r.t.id + " · " + age(r.t.created_at) + "</span>" +
+            '<div class="kt">' + esc(title).slice(0, 140) + (title.length > 140 ? "…" : "") + "</div>" +
+            (st === "failed" && res ? '<div class="kres">' + esc(res.slice(0, 160)) + "</div>" : "") +
+            kactHtml(r) +
+            "</div>";
+        });
+        if (!rows.length) html += '<div class="empty">—</div>';
+        html += "</div>";
+      });
+      box.innerHTML = html;
+      wireKanban(box);
+      document.getElementById("kbInfo").textContent =
+        all.length + " tasks across " + WORKERS.length + " agents · " + new Date().toLocaleTimeString();
+    } catch (e) { box.innerHTML = '<span class="empty err">' + esc(e.message) + "</span>"; }
+  }
+  document.getElementById("kbRefresh").addEventListener("click", loadKanban);
+
+  function wireKanban(box) {
+    function keyOf(el, attr) { var a = el.getAttribute(attr).split("|"); return { w: a[0], id: a[1] }; }
+    box.querySelectorAll("[data-kp]").forEach(function (b) {
+      b.addEventListener("click", async function () {
+        var k = keyOf(this, "data-kp");
+        try {
+          await api(baseOf(k.w), "/tasks/" + k.id, "POST", { status: "paused" });
+          feed(k.w, "task #" + k.id + " → paused");
+          loadKanban();
+        } catch (e) { feed(k.w, '<span class="err">pause failed: ' + e.message + "</span>"); }
+      });
+    });
+    box.querySelectorAll("[data-kr]").forEach(function (b) {
+      b.addEventListener("click", async function () {
+        var k = keyOf(this, "data-kr");
+        try {
+          await api(baseOf(k.w), "/tasks/" + k.id, "POST", { status: "pending" });
+          feed(k.w, "task #" + k.id + " → resumed (pending)");
+          loadKanban();
+        } catch (e) { feed(k.w, '<span class="err">resume failed: ' + e.message + "</span>"); }
+      });
+    });
+    box.querySelectorAll("[data-kt]").forEach(function (b) {
+      b.addEventListener("click", async function () {
+        var k = keyOf(this, "data-kt");
+        var task = null;
+        (KB_ALL || []).forEach(function (r) { if (r.w === k.w && String(r.t.id) === k.id) task = r.t; });
+        var title = task ? String(task.title) : "(unknown)";
+        var st = task ? task.status : "";
+        if (st === "paused" || st === "failed") {
+          try { await api(baseOf(k.w), "/tasks/" + k.id, "POST", { status: "pending" }); }
+          catch (e) { feed(k.w, '<span class="err">reopen failed: ' + e.message + "</span>"); return; }
+        }
+        feed(k.w, "⚡ trigger #" + k.id + " → forcing execution on " + k.w);
+        await askAgent(k.w,
+          'TRIGGER (forced execution): run task #' + k.id + ' NOW: "' + title + '". ' +
+          "Claim it with claim_task (it is pending now), do the work, then close it with " +
+          "complete_task(taskId, status='done'|'failed', result='<what happened>').",
+          "trigger #" + k.id);
+        loadKanban();
+      });
+    });
+  }
 
   /* --- federation view --- */
   async function loadFed() {
