@@ -175,8 +175,14 @@ export const DASHBOARD_HTML = `<!doctype html>
   <div class="viewhead"><b class="vtitle">Conversations (read-only)</b>
     <select id="convWorker"></select>
     <button class="mini" id="convRefresh">load list</button>
-    <select id="convSel"><option value="">pick a conversation…</option></select></div>
-  <div class="panel"><div class="trans" id="convTrans"><span class="empty">choose an agent → load → pick a conversation</span></div></div>
+    <select id="convSel"><option value="">pick a conversation…</option></select>
+    <select id="convStart" title="Which end of the transcript to load first">
+      <option value="ascending">oldest first</option>
+      <option value="descending">newest first</option>
+    </select>
+    <span class="empty" id="convInfo"></span></div>
+  <div class="panel"><div class="trans" id="convTrans"><span class="empty">choose an agent → load → pick a conversation</span></div>
+    <div class="ctrl"><button class="mini" id="convMore" style="display:none">load 50 more</button></div></div>
 </div>
 
 <div id="view-notes" class="view">
@@ -862,24 +868,55 @@ export const DASHBOARD_HTML = `<!doctype html>
       document.getElementById("convTrans").innerHTML = '<span class="empty">pick a conversation above</span>';
     } catch (e) { sel.innerHTML = '<option value="">error: ' + esc(e.message) + "</option>"; }
   }
+  var convEntries = [], convCursor = null, convOrder = "ascending", convIdCur = null;
+
   async function loadConv(id) {
     if (!id) return;
+    convIdCur = id; convEntries = []; convCursor = null;
+    convOrder = document.getElementById("convStart").value || "ascending";
+    await fetchConvPage();
+  }
+  async function fetchConvPage() {
+    if (!convIdCur) return;
     var w = cwEl.value || WORKERS[0];
     var box = document.getElementById("convTrans");
-    box.innerHTML = '<span class="empty">loading…</span>';
+    if (!convEntries.length) box.innerHTML = '<span class="empty">loading…</span>';
+    var q = "limit=50&order=" + convOrder +
+      (convCursor ? "&cursor=" + encodeURIComponent(JSON.stringify(convCursor)) : "");
     try {
-      var r = await api(baseOf(w), "/conversations/" + id + "/entries?limit=50");
-      var html = "";
-      (r.entries || []).forEach(function (en) {
-        (en.model || []).forEach(function (m) {
-          var content = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
-          html += '<div class="msg ' + (m.role === "assistant" ? "assistant" : "") + '"><b>' +
-            esc(m.role || "?") + ":</b> " + esc(content) + "</div>";
-        });
-      });
-      box.innerHTML = html || '<span class="empty">empty transcript</span>';
+      var r = await api(baseOf(w), "/conversations/" + convIdCur + "/entries?" + q);
+      convEntries = convEntries.concat(r.entries || []);
+      convCursor = (r.page && r.page.next) || null;
+      renderConv();
     } catch (e) { box.innerHTML = '<span class="empty err">' + esc(e.message) + "</span>"; }
   }
+  function renderConv() {
+    var box = document.getElementById("convTrans");
+    var list = convOrder === "descending" ? convEntries.slice().reverse() : convEntries;
+    var html = "";
+    list.forEach(function (en) {
+      (en.model || []).forEach(function (m) {
+        var content = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
+        html += '<div class="msg ' + (m.role === "assistant" ? "assistant" : "") + '"><b>' +
+          esc(m.role || "?") + ":</b> " + esc(content) + "</div>";
+      });
+    });
+    box.innerHTML = html || '<span class="empty">empty transcript</span>';
+    var more = document.getElementById("convMore");
+    if (convCursor) {
+      more.style.display = "";
+      more.textContent = "load 50 more (" + convEntries.length + " loaded) " +
+        (convOrder === "descending" ? "↑ older" : "→ next");
+    } else {
+      more.style.display = "none";
+    }
+    document.getElementById("convInfo").textContent =
+      convEntries.length + " entries" + (convCursor ? "" : " · end of transcript");
+  }
+  document.getElementById("convMore").addEventListener("click", fetchConvPage);
+  document.getElementById("convStart").addEventListener("change", function () {
+    if (convIdCur) loadConv(convIdCur);
+  });
   document.getElementById("convRefresh").addEventListener("click", loadConvList);
   cwEl.addEventListener("change", loadConvList);
   document.getElementById("convSel").addEventListener("change", function () { loadConv(this.value); });

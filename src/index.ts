@@ -43,6 +43,7 @@ import {
   type AgentEventStream,
   type Conversation,
   type ConversationId,
+  type Cursor,
 } from "@earendil-works/pi-durable";
 import {
   DurableObjectSqliteDatabase,
@@ -1136,7 +1137,22 @@ export class PiAgent {
           }
           if (seg.length === 3 && seg[2] === "entries" && method === "GET") {
             const limit = clampLimit(url.searchParams.get("limit"));
-            const page = await conv.entries({ order: "ascending" }, limit, undefined, BACKGROUND_CONTEXT);
+            const order = url.searchParams.get("order") === "descending" ? "descending" : "ascending";
+            const rawCursor = url.searchParams.get("cursor");
+            let cursor: Cursor | undefined;
+            if (rawCursor) {
+              let parsed: unknown;
+              try {
+                parsed = JSON.parse(rawCursor);
+              } catch {
+                return json({ error: "invalid_cursor" }, 400);
+              }
+              if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+                return json({ error: "invalid_cursor" }, 400);
+              }
+              cursor = parsed as Cursor;
+            }
+            const page = await conv.entries({ order }, limit, cursor, BACKGROUND_CONTEXT);
             const { items, ...rest } = page as { items: unknown[] } & Record<string, unknown>;
             return json({ entries: items, page: rest });
           }
