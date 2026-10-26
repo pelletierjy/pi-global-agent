@@ -65,7 +65,7 @@ export type Env = {
   PEERS?: string;
 };
 
-type TaskStatus = "pending" | "in_progress" | "done" | "failed";
+type TaskStatus = "pending" | "in_progress" | "paused" | "done" | "failed";
 
 type TaskRow = {
   id: number;
@@ -81,7 +81,7 @@ type NoteRow = { id: number; body: string; created_at: number };
 
 type AgentState = { status: string; currentTask: string; currentTaskId?: number };
 
-const TASK_STATUSES: TaskStatus[] = ["pending", "in_progress", "done", "failed"];
+const TASK_STATUSES: TaskStatus[] = ["pending", "in_progress", "paused", "done", "failed"];
 
 /** Default model for new root conversations. Change per conversation via POST /conversations/:id/configure. */
 const DEFAULT_MODEL = { provider: "openrouter", modelId: "nvidia/nemotron-3.5-lightning:free" } as const;
@@ -627,7 +627,7 @@ export class PiAgent {
         defineTool({
           name: "list_tasks",
           description:
-            "List this agent's durable task queue (optionally filtered by status: pending, in_progress, done, failed).",
+            "List this agent's durable task queue (optionally filtered by status: pending, in_progress, paused, done, failed).",
           parameters: Type.Object({ status: Type.Optional(Type.String()) }),
           replay: "safe",
           execute: async (args: { status?: string }) => {
@@ -976,7 +976,7 @@ export class PiAgent {
       /* ---------------- status / ping / usage ---------------- */
       if (seg.length === 0 || seg[0] === "status") {
         if (method !== "GET") return json({ error: "method_not_allowed" }, 405);
-        const counts: Record<TaskStatus, number> = { pending: 0, in_progress: 0, done: 0, failed: 0 };
+        const counts: Record<TaskStatus, number> = { pending: 0, in_progress: 0, paused: 0, done: 0, failed: 0 };
         for (const row of await db.all<{ status: TaskStatus; n: number }>(
           `SELECT status, COUNT(*) AS n FROM tasks GROUP BY status`,
         )) {
