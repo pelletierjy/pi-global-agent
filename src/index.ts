@@ -442,10 +442,10 @@ async function runSweep(env: Env): Promise<Response> {
         ...list,
         ...(pending.length > 10 ? [`(+${pending.length - 10} more: GET /tasks?status=pending)`] : []),
         "",
-        "Claim them oldest-first (POST /tasks/claim — atomic), work each task, then close it",
-        'with POST /tasks/<id> {"status":"done"|"failed","result":"<what happened>"}.',
-        "If a task is blocked (e.g. no local runner for run_command), do the part you can:",
-        "either close it failed with the precise blocker, or leave it pending and add_note why.",
+        "Claim them oldest-first with the claim_task tool (atomic; omit taskId = oldest pending), do the",
+        "work, then close each with complete_task(taskId, status='done'|'failed', result='<what happened>').",
+        "Blocked (e.g. no local runner for run_command)? Do the part you can: close failed with the",
+        "precise blocker, or leave it pending and add_note why.",
         "When finished, add_note a one-line summary of what you claimed and the outcome.",
       ]
         .filter(Boolean)
@@ -559,8 +559,9 @@ export class PiAgent {
       model: { ...DEFAULT_MODEL },
       instructions:
         `You are the ${this.env.AGENT_NAME} PI agent. ` +
-        "You have a durable mission-control queue (list_tasks) and session memory (add_note): " +
-        "record decisions with add_note so future sessions of this agent keep the context.",
+        "You have a durable mission-control queue (list_tasks, claim_task, complete_task) and session " +
+        "memory (add_note): claim a task before working it, always close it with done/failed + a " +
+        "meaningful result, and record decisions with add_note so future sessions keep the context.",
     };
   }
 
@@ -597,6 +598,75 @@ export class PiAgent {
           execute: async (args: { body: string }) => {
             await db.run(`INSERT INTO notes (body, created_at) VALUES (?, ?)`, args.body, Date.now());
             return { output: [{ type: "text" as const, text: "note saved" }] };
+          },
+        }),
+        defineTool({
+          name: "claim_task",
+          description:
+            "Claim a task from this agent's queue (pending -> in_progress), before working it. " +
+            "Omit taskId to claim the oldest pending task. Atomic — returns the claimed task, or " +
+            "'nothing to claim'.",
+          parameters: Type.Object({ taskId: Type.Optional(Type.Number()) }),
+          execute: async (args: { taskId?: number }) => {
+            const now = Date.now();
+            const row =
+              typeof args.taskId === "number"
+                ? await db.get(
+                    `UPDATE tasks SET status = 'in_progress', updated_at = ?
+                     WHERE id = ? AND status = 'pending' RETURNING *`,
+                    now,
+                    args.taskId,
+                  )
+                : await db.get(
+                    `UPDATE tasks SET status = 'in_progress', updated_at = ?
+                     WHERE id = (SELECT id FROM tasks WHERE status = 'pending' ORDER BY id ASC LIMIT 1)
+                     RETURNING *`,
+                    now,
+                  );
+            return {
+              output: [
+                {
+                  type: "text" as const,
+                  text: row
+                    ? `claimed: ${JSON.stringify(row, null, 2)}`
+                    : "nothing to claim (no matching pending task)",
+                },
+              ],
+            };
+          },
+        }),
+        defineTool({
+          name: "complete_task",
+          description:
+            "Close a task you claimed (or any pending task) after doing the work: status must be " +
+            "'done' or 'failed', and result must say precisely what happened.",
+          parameters: Type.Object({
+            taskId: Type.Number(),
+            status: Type.String(),
+            result: Type.String(),
+          }),
+          execute: async (args: { taskId: number; status: string; result: string }) => {
+            if (args.status !== "done" && args.status !== "failed") {
+              return { output: [{ type: "text" as const, text: "status must be 'done' or 'failed'" }] };
+            }
+            const row = await db.get(
+              `UPDATE tasks SET status = ?, result = ?, updated_at = ?
+               WHERE id = ? AND status IN ('pending', 'in_progress') RETURNING *`,
+              args.status,
+              args.result,
+              Date.now(),
+              args.taskId,
+            );
+            return {
+              output: [
+                {
+                  type: "text" as const,
+                  text: row
+                    ? `closed: ${JSON.stringify(row, null, 2)}`
+                    : "task not found or already closed",
+                },
+              ],
+            };
           },
         }),
       ],
