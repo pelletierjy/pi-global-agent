@@ -897,8 +897,12 @@ export const DASHBOARD_HTML = `<!doctype html>
         feed(k.w, "⚡ trigger #" + k.id + " → forcing execution on " + k.w);
         await askAgent(k.w,
           'TRIGGER (forced execution): run task #' + k.id + ' NOW: "' + title + '". ' +
-          "Claim it with claim_task (it is pending now), do the work, then close it with " +
-          "complete_task(taskId, status='done'|'failed', result='<what happened>').",
+          "RULES: 1) TOOL-FIRST - your first response block must contain a tool call, no prose plans. " +
+          "2) Every run_command MUST use timeoutSeconds >= 60 (the local runner polls every 30s; a lower timeout expires unclaimed and falsely reports a runner timeout). " +
+          "3) Claim first with claim_task (the task is pending now). " +
+          "4) Do the work (Windows: dir or Get-ChildItem, never ls). " +
+          "5) Close with complete_task(taskId, status='done'|'failed', result='<what happened>') - failed only with a precise blocker, never claim completion in prose. " +
+          "6) add_note one line. Reply ONLY the final result line.",
           "trigger #" + k.id);
         loadKanban();
       });

@@ -21,7 +21,7 @@
 
   // Scenario C: weekly sweep (Mondays 13:00 UTC = 09:00 EDT): digests every peer's
   // queue into a hub note and dispatches SWEEP_TASK (deduped) on each peer.
-  "triggers": { "crons": ["0 13 * * 1"] },
+  "triggers": { "crons": ["0 13 * * 1", "0 5 * * *"] },
 
   "vars": {
     "AGENT_NAME": "global",
@@ -35,3 +35,4 @@
     "head_sampling_rate": 1
   }
 }
+
