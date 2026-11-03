@@ -400,14 +400,21 @@ async function runSweep(env: Env): Promise<Response> {
         `${peer.name}: pending=${counts.pending ?? '?'} in_progress=${counts.in_progress ?? '?'} done=${counts.done ?? '?'} notes=${status?.notes ?? '?'}`,
       );
 
-      // Pending queue is always needed now (dedupe + relay).
-      const pendingRes = await fetch(`${peer.url}/tasks?status=pending&limit=50`, { headers });
-      const pending = (pendingRes.ok ? await pendingRes.json() : []) as { id: number; title: string }[];
-      if (Array.isArray(pending)) pendingByPeer.set(peer.name, pending);
+      // All tasks: dedupe checks OPEN copies; the relay only nudges pending ones.
+      const tasksRes = await fetch(`${peer.url}/tasks?limit=50`, { headers });
+      const tasks = (tasksRes.ok ? await tasksRes.json() : []) as { id: number; title: string; status: string }[];
+      if (Array.isArray(tasks)) {
+        pendingByPeer.set(peer.name, tasks.filter((t) => t.status === "pending"));
+      }
 
       if (sweepTask) {
-        // Dedupe: skip when a pending task with the same title already exists.
-        const duplicate = Array.isArray(pending) && pending.some((t: { title?: string }) => t.title === sweepTask);
+        // Dedupe: skip while an OPEN copy (pending/in_progress/paused) of this title exists —
+        // otherwise each cron re-dispatches while claimed-but-unfinished copies pile up.
+        const duplicate = Array.isArray(tasks) && tasks.some(
+          (t) =>
+            t.title === sweepTask &&
+            (t.status === "pending" || t.status === "in_progress" || t.status === "paused"),
+        );
         if (duplicate) {
           dispatched.push({ peer: peer.name, skipped: "already pending" });
         } else {
